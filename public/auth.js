@@ -100,6 +100,36 @@ export function isAuthConfigured() {
   );
 }
 
+export function getAuthDiagnostics() {
+  const authConfig = window.OT_AUTH ?? {};
+  const authDebug = window.OT_AUTH_DEBUG ?? {};
+  const config = getAuthConfig();
+
+  return {
+    hasWindowAuthConfig: Boolean(window.OT_AUTH),
+    hasSupabaseUrl: Boolean(config.supabaseUrl),
+    hasSupabaseAnonKey:
+      Boolean(config.supabaseAnonKey) &&
+      config.supabaseAnonKey !== "REPLACE_WITH_SUPABASE_ANON_KEY",
+    hasApiBaseUrl: Boolean(config.apiBaseUrl),
+    rawLoginPath: authConfig.loginPath ?? null,
+    rawAppPath: authConfig.appPath ?? null,
+    debugEnvironment: authDebug.environment ?? null,
+    debugHasSupabaseUrl:
+      typeof authDebug.hasSupabaseUrl === "boolean"
+        ? authDebug.hasSupabaseUrl
+        : null,
+    debugHasSupabaseAnonKey:
+      typeof authDebug.hasSupabaseAnonKey === "boolean"
+        ? authDebug.hasSupabaseAnonKey
+        : null,
+    debugHasApiBaseUrl:
+      typeof authDebug.hasApiBaseUrl === "boolean"
+        ? authDebug.hasApiBaseUrl
+        : null,
+  };
+}
+
 export function getSupabaseClient() {
   if (supabaseClient) {
     logAuth("Reuse existing Supabase client");

@@ -1,6 +1,7 @@
 import {
   clearPersistedDebugLogs,
   exchangeCodeForSessionIfPresent,
+  getAuthDiagnostics,
   getAuthConfig,
   getSession,
   getUserSnapshot,
@@ -67,6 +68,34 @@ loginButton.addEventListener("mousedown", () => {
 function setMessage(message, isError = false) {
   statusText.textContent = message;
   statusText.dataset.state = isError ? "error" : "info";
+}
+
+function buildMissingConfigMessage() {
+  const diagnostics = getAuthDiagnostics();
+  const missingKeys = [];
+
+  if (!diagnostics.hasSupabaseUrl) {
+    missingKeys.push("SUPABASEURL");
+  }
+
+  if (!diagnostics.hasSupabaseAnonKey) {
+    missingKeys.push("SUPABASEANONKEY");
+  }
+
+  const debugSuffix =
+    diagnostics.debugEnvironment
+      ? ` Vercel env: ${diagnostics.debugEnvironment}.`
+      : "";
+
+  if (missingKeys.length > 0) {
+    return `Thieu bien ${missingKeys.join(", ")} tren frontend.${debugSuffix}`;
+  }
+
+  if (!diagnostics.hasWindowAuthConfig) {
+    return `Khong nap duoc /api/auth-config.js.${debugSuffix}`;
+  }
+
+  return `Chua co Supabase config hop le tu bien moi truong frontend.${debugSuffix}`;
 }
 
 function getInitials(displayName, email) {
@@ -144,7 +173,8 @@ async function syncView() {
   if (!isAuthConfigured()) {
     configHint.hidden = false;
     renderSignedOut();
-    setMessage("Chưa có Supabase config hợp lệ từ biến môi trường frontend.", true);
+    setMessage(buildMissingConfigMessage(), true);
+    logLogin("Auth config diagnostics", getAuthDiagnostics());
     return;
   }
 

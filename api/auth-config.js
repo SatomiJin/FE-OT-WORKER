@@ -10,23 +10,10 @@ function pickFirstNonEmpty(...values) {
 
 export default function handler(request, response) {
   const authConfig = {
-    supabaseUrl: pickFirstNonEmpty(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASEURL,
-    ),
-    supabaseAnonKey: pickFirstNonEmpty(
-      process.env.SUPABASE_ANON_KEY,
-      process.env.SUPABASEANONKEY,
-    ),
-    apiBaseUrl: pickFirstNonEmpty(
-      process.env.API_BASE_URL,
-      process.env.APIBASEURL,
-    ),
-    loginPath: pickFirstNonEmpty(
-      process.env.LOGIN_PATH,
-      process.env.LOGINPATH,
-      "/login.html",
-    ),
+    supabaseUrl: pickFirstNonEmpty(process.env.SUPABASEURL),
+    supabaseAnonKey: pickFirstNonEmpty(process.env.SUPABASEANONKEY),
+    apiBaseUrl: pickFirstNonEmpty(process.env.APIBASEURL),
+    loginPath: pickFirstNonEmpty(process.env.LOGINPATH, "/login.html"),
     appPath: pickFirstNonEmpty(process.env.APP_PATH, process.env.APPPATH, "/"),
   };
   const authConfigDebug = {
@@ -43,4 +30,5 @@ export default function handler(request, response) {
     .send(
       `window.OT_AUTH = ${JSON.stringify(authConfig, null, 2)};\nwindow.OT_AUTH_DEBUG = ${JSON.stringify(authConfigDebug, null, 2)};\n`,
     );
+  console.log("Served auth config:", authConfig, "Debug info:", authConfig);
 }
