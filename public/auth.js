@@ -77,13 +77,15 @@ export function getAuthConfig() {
   const origin = window.location.origin;
   const loginPath = authConfig.loginPath ?? "/login.html";
   const appPath = authConfig.appPath ?? "/";
+  const configuredApiBaseUrl =
+    typeof authConfig.apiBaseUrl === "string" ? authConfig.apiBaseUrl.trim() : "";
+  const overriddenApiBaseUrl =
+    typeof window.OT_API_BASE_URL === "string" ? window.OT_API_BASE_URL.trim() : "";
 
   return {
     supabaseUrl: trimTrailingSlash(authConfig.supabaseUrl),
     supabaseAnonKey: String(authConfig.supabaseAnonKey ?? "").trim(),
-    apiBaseUrl: trimTrailingSlash(
-      authConfig.apiBaseUrl ?? window.OT_API_BASE_URL ?? "",
-    ),
+    apiBaseUrl: trimTrailingSlash(configuredApiBaseUrl || overriddenApiBaseUrl || origin),
     loginUrl: new URL(loginPath, origin).toString(),
     appUrl: new URL(appPath, origin).toString(),
   };
@@ -107,7 +109,7 @@ export function getSupabaseClient() {
   const config = getAuthConfig();
   if (!isAuthConfigured()) {
     throw new Error(
-      "Supabase client config is missing. Update public/auth-config.js before using Google login.",
+      "Supabase client config is missing. Check the environment variables used by /api/auth-config.js before using Google login.",
     );
   }
 

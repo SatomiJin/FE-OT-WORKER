@@ -144,7 +144,7 @@ async function syncView() {
   if (!isAuthConfigured()) {
     configHint.hidden = false;
     renderSignedOut();
-    setMessage("Chưa có Supabase anon key trong public/auth-config.js.", true);
+    setMessage("Chưa có Supabase config hợp lệ từ biến môi trường frontend.", true);
     return;
   }
 

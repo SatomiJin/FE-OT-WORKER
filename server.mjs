@@ -104,7 +104,10 @@ async function serveAuthConfig(response) {
 async function serveStatic(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
 
-  if (requestUrl.pathname === "/auth-config.js") {
+  if (
+    requestUrl.pathname === "/auth-config.js" ||
+    requestUrl.pathname === "/api/auth-config.js"
+  ) {
     await serveAuthConfig(response);
     return;
   }

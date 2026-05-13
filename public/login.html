@@ -22,7 +22,7 @@
       <p id="authMessage" class="auth-message subtle">Đang kiểm tra phiên đăng nhập...</p>
 
       <div id="configHint" class="auth-warning" hidden>
-        Cập nhật <code>public/auth-config.js</code> với Supabase anon key trước khi đăng nhập.
+        Cập nhật biến môi trường frontend trước khi đăng nhập.
       </div>
 
       <!-- User info sau khi đăng nhập -->
@@ -61,7 +61,7 @@
     </section>
   </main>
 
-  <script src="./auth-config.js"></script>
+  <script src="/api/auth-config.js"></script>
   <script type="module" src="./login.js"></script>
 </body>
 
