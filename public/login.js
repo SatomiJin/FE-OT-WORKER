@@ -72,6 +72,7 @@ function setMessage(message, isError = false) {
 
 function buildMissingConfigMessage() {
   const diagnostics = getAuthDiagnostics();
+  console.log(diagnostics);
   const missingKeys = [];
 
   if (!diagnostics.hasSupabaseUrl) {
