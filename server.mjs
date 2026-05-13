@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
 const fixedPort = 3026;
+const envPath = path.join(__dirname, ".env");
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -24,8 +25,90 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function sendJavaScript(response, statusCode, source) {
+  response.writeHead(statusCode, {
+    "Content-Type": "application/javascript; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  response.end(source);
+}
+
+async function readEnvFile() {
+  try {
+    const raw = await fs.readFile(envPath, "utf8");
+    const entries = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .map((line) => {
+        const separatorIndex = line.indexOf("=");
+        if (separatorIndex === -1) {
+          return null;
+        }
+
+        const key = line.slice(0, separatorIndex).trim();
+        const value = line.slice(separatorIndex + 1).trim();
+        return [key, value];
+      })
+      .filter(Boolean);
+
+    return Object.fromEntries(entries);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return {};
+    }
+
+    throw error;
+  }
+}
+
+function pickFirstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+async function serveAuthConfig(response) {
+  const env = await readEnvFile();
+  const authConfig = {
+    supabaseUrl: pickFirstNonEmpty(env.SUPABASE_URL, env.SUPABASEURL),
+    supabaseAnonKey: pickFirstNonEmpty(
+      env.SUPABASE_ANON_KEY,
+      env.SUPABASEANONKEY,
+    ),
+    apiBaseUrl: pickFirstNonEmpty(
+      env.API_BASE_URL,
+      env.APIBASEURL,
+      // "http://localhost:3000",
+    ),
+    loginPath: pickFirstNonEmpty(env.LOGIN_PATH, env.LOGINPATH, "/login.html"),
+    appPath: pickFirstNonEmpty(env.APP_PATH, env.APPPATH, "/"),
+  };
+
+  sendJavaScript(
+    response,
+    200,
+    `window.OT_AUTH = ${JSON.stringify(authConfig, null, 2)};\n`,
+  );
+}
+
 async function serveStatic(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+
+  if (requestUrl.pathname === "/auth-config.js") {
+    await serveAuthConfig(response);
+    return;
+  }
+
   const pathname =
     requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
   const filePath = path.join(publicDir, pathname);

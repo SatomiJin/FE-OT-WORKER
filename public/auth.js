@@ -20,14 +20,19 @@ function logAuth(step, detail) {
 
 function persistDebugLog(prefix, step, detail) {
   try {
-    const logs = JSON.parse(sessionStorage.getItem(DEBUG_LOG_STORAGE_KEY) || "[]");
+    const logs = JSON.parse(
+      sessionStorage.getItem(DEBUG_LOG_STORAGE_KEY) || "[]",
+    );
     logs.push({
       time: new Date().toISOString(),
       prefix,
       step,
-      detail: detail ?? null
+      detail: detail ?? null,
     });
-    sessionStorage.setItem(DEBUG_LOG_STORAGE_KEY, JSON.stringify(logs.slice(-200)));
+    sessionStorage.setItem(
+      DEBUG_LOG_STORAGE_KEY,
+      JSON.stringify(logs.slice(-200)),
+    );
   } catch {
     // Ignore debug logging failures so auth flow is not affected.
   }
@@ -35,12 +40,16 @@ function persistDebugLog(prefix, step, detail) {
 
 export function replayPersistedDebugLogs(scope = "unknown") {
   try {
-    const logs = JSON.parse(sessionStorage.getItem(DEBUG_LOG_STORAGE_KEY) || "[]");
+    const logs = JSON.parse(
+      sessionStorage.getItem(DEBUG_LOG_STORAGE_KEY) || "[]",
+    );
     if (!Array.isArray(logs) || logs.length === 0) {
       return;
     }
 
-    console.groupCollapsed(`[OT Debug Replay] ${scope} (${logs.length} entries)`);
+    console.groupCollapsed(
+      `[OT Debug Replay] ${scope} (${logs.length} entries)`,
+    );
     for (const entry of logs) {
       const line = `${entry.time} ${entry.prefix} ${entry.step}`;
       if (entry.detail === null || entry.detail === undefined) {
@@ -73,10 +82,10 @@ export function getAuthConfig() {
     supabaseUrl: trimTrailingSlash(authConfig.supabaseUrl),
     supabaseAnonKey: String(authConfig.supabaseAnonKey ?? "").trim(),
     apiBaseUrl: trimTrailingSlash(
-      authConfig.apiBaseUrl ?? window.OT_API_BASE_URL ?? "http://localhost:3000"
+      authConfig.apiBaseUrl ?? window.OT_API_BASE_URL ?? "",
     ),
     loginUrl: new URL(loginPath, origin).toString(),
-    appUrl: new URL(appPath, origin).toString()
+    appUrl: new URL(appPath, origin).toString(),
   };
 }
 
@@ -85,7 +94,7 @@ export function isAuthConfigured() {
   return Boolean(
     config.supabaseUrl &&
     config.supabaseAnonKey &&
-    config.supabaseAnonKey !== "REPLACE_WITH_SUPABASE_ANON_KEY"
+    config.supabaseAnonKey !== "REPLACE_WITH_SUPABASE_ANON_KEY",
   );
 }
 
@@ -97,21 +106,23 @@ export function getSupabaseClient() {
 
   const config = getAuthConfig();
   if (!isAuthConfigured()) {
-    throw new Error("Supabase client config is missing. Update public/auth-config.js before using Google login.");
+    throw new Error(
+      "Supabase client config is missing. Update public/auth-config.js before using Google login.",
+    );
   }
 
   supabaseClient = createClient(config.supabaseUrl, config.supabaseAnonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true
-    }
+      detectSessionInUrl: true,
+    },
   });
   logAuth("Created Supabase client", {
     supabaseUrl: config.supabaseUrl,
     loginUrl: config.loginUrl,
     appUrl: config.appUrl,
-    apiBaseUrl: config.apiBaseUrl
+    apiBaseUrl: config.apiBaseUrl,
   });
 
   return supabaseClient;
@@ -121,13 +132,13 @@ export async function exchangeCodeForSessionIfPresent() {
   if (window.location.hash.includes("access_token=")) {
     logAuth("Detected access token in URL hash", {
       pathname: window.location.pathname,
-      hashPreview: `${window.location.hash.slice(0, 48)}...`
+      hashPreview: `${window.location.hash.slice(0, 48)}...`,
     });
     const session = await getSession();
     logAuth("Session after hash callback", {
       hasSession: Boolean(session),
       userId: session?.user?.id ?? null,
-      email: session?.user?.email ?? null
+      email: session?.user?.email ?? null,
     });
     return session;
   }
@@ -142,14 +153,16 @@ export async function exchangeCodeForSessionIfPresent() {
   const code = url.searchParams.get("code");
 
   if (!code) {
-    logAuth("URL contains code marker but no code value", { href: window.location.href });
+    logAuth("URL contains code marker but no code value", {
+      href: window.location.href,
+    });
     return null;
   }
 
   logAuth("Exchanging auth code for session", {
     pathname: url.pathname,
     search: url.search,
-    codeLength: code.length
+    codeLength: code.length,
   });
   const { data, error } = await client.auth.exchangeCodeForSession(code);
   if (error) {
@@ -159,11 +172,15 @@ export async function exchangeCodeForSessionIfPresent() {
 
   url.searchParams.delete("code");
   url.searchParams.delete("state");
-  window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+  window.history.replaceState(
+    {},
+    document.title,
+    url.pathname + url.search + url.hash,
+  );
   logAuth("Exchange success", {
     hasSession: Boolean(data.session),
     userId: data.session?.user?.id ?? null,
-    email: data.session?.user?.email ?? null
+    email: data.session?.user?.email ?? null,
   });
   return data.session ?? null;
 }
@@ -179,7 +196,7 @@ export async function getSession() {
   logAuth("Read current session", {
     hasSession: Boolean(data.session),
     userId: data.session?.user?.id ?? null,
-    email: data.session?.user?.email ?? null
+    email: data.session?.user?.email ?? null,
   });
   return data.session ?? null;
 }
@@ -200,7 +217,7 @@ export async function refreshSession() {
 
   logAuth("Refresh session result", {
     hasSession: Boolean(data.session),
-    userId: data.session?.user?.id ?? null
+    userId: data.session?.user?.id ?? null,
   });
   return data.session ?? null;
 }
@@ -213,12 +230,14 @@ export async function requireSession() {
   if (session) {
     logAuth("requireSession success", {
       userId: session.user?.id ?? null,
-      email: session.user?.email ?? null
+      email: session.user?.email ?? null,
     });
     return session;
   }
 
-  logAuth("No session found, redirecting to login", { loginUrl: getAuthConfig().loginUrl });
+  logAuth("No session found, redirecting to login", {
+    loginUrl: getAuthConfig().loginUrl,
+  });
   window.location.replace(getAuthConfig().loginUrl);
   return null;
 }
@@ -230,8 +249,10 @@ export function getUserSnapshot(session) {
   return {
     id: user?.id ?? "",
     email: user?.email ?? "",
-    displayName: String(metadata.full_name ?? metadata.name ?? user?.email ?? "Unknown user").trim(),
-    avatarUrl: String(metadata.avatar_url ?? metadata.picture ?? "").trim()
+    displayName: String(
+      metadata.full_name ?? metadata.name ?? user?.email ?? "Unknown user",
+    ).trim(),
+    avatarUrl: String(metadata.avatar_url ?? metadata.picture ?? "").trim(),
   };
 }
 
@@ -241,8 +262,8 @@ export async function signInWithGoogle() {
   const { error } = await client.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: getAuthConfig().appUrl
-    }
+      redirectTo: getAuthConfig().appUrl,
+    },
   });
 
   if (error) {
