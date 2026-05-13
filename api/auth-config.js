@@ -14,7 +14,7 @@ export default function handler(request, response) {
     supabaseAnonKey: pickFirstNonEmpty(process.env.SUPABASEANONKEY),
     apiBaseUrl: pickFirstNonEmpty(process.env.APIBASEURL),
     loginPath: pickFirstNonEmpty(process.env.LOGINPATH, "/login.html"),
-    appPath: pickFirstNonEmpty(process.env.APP_PATH, process.env.APPPATH, "/"),
+    appPath: pickFirstNonEmpty(process.env.APPPATH, "/"),
   };
   const authConfigDebug = {
     hasSupabaseUrl: Boolean(authConfig.supabaseUrl),
@@ -30,5 +30,4 @@ export default function handler(request, response) {
     .send(
       `window.OT_AUTH = ${JSON.stringify(authConfig, null, 2)};\nwindow.OT_AUTH_DEBUG = ${JSON.stringify(authConfigDebug, null, 2)};\n`,
     );
-  console.log("Served auth config:", authConfig, "Debug info:", authConfig);
 }

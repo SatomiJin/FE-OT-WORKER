@@ -80,18 +80,11 @@ function pickFirstNonEmpty(...values) {
 async function serveAuthConfig(response) {
   const env = await readEnvFile();
   const authConfig = {
-    supabaseUrl: pickFirstNonEmpty(env.SUPABASE_URL, env.SUPABASEURL),
-    supabaseAnonKey: pickFirstNonEmpty(
-      env.SUPABASE_ANON_KEY,
-      env.SUPABASEANONKEY,
-    ),
-    apiBaseUrl: pickFirstNonEmpty(
-      env.API_BASE_URL,
-      env.APIBASEURL,
-      // "http://localhost:3000",
-    ),
-    loginPath: pickFirstNonEmpty(env.LOGIN_PATH, env.LOGINPATH, "/login.html"),
-    appPath: pickFirstNonEmpty(env.APP_PATH, env.APPPATH, "/"),
+    supabaseUrl: pickFirstNonEmpty(env.SUPABASEURL),
+    supabaseAnonKey: pickFirstNonEmpty(env.SUPABASEANONKEY),
+    apiBaseUrl: pickFirstNonEmpty(env.APIBASEURL),
+    loginPath: pickFirstNonEmpty(env.LOGINPATH, "/login.html"),
+    appPath: pickFirstNonEmpty(env.APPPATH, "/"),
   };
 
   sendJavaScript(

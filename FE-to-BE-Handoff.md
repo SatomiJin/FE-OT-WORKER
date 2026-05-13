@@ -19,7 +19,7 @@ Backend REST API for the OTWORKER overtime tracker app. This implementation uses
 ## Run Local
 
 1. Copy `.env.example` to `.env`.
-2. Fill in `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+2. Fill in `SUPABASEURL` and `SUPABASEANONKEY`.
 3. Create the database table and RLS policies from [supabase/otworker_profiles.sql](/d:/Workspace/WorkSpace/AI/OTWORKERBE/supabase/otworker_profiles.sql:1).
 4. Start the server:
 
@@ -37,13 +37,13 @@ Server default:
 - `PORT`: HTTP port. Default `3000`
 - `APP_TIME_ZONE`: Business timezone for deriving entry `date`, `startTime`, and `endTime`. Default `Asia/Ho_Chi_Minh`
 - `CORS_ORIGIN`: Allowed origin for browser requests. Default `*`
-- `SUPABASE_URL`: Required. Your Supabase project URL.
-- `SUPABASE_ANON_KEY`: Required. Used together with the authenticated user's access token so queries run under RLS.
+- `SUPABASEURL`: Required. Your Supabase project URL.
+- `SUPABASEANONKEY`: Required. Used together with the authenticated user's access token so queries run under RLS.
 - `SUPABASE_SERVICE_ROLE_KEY`: Optional but recommended. Lets the backend enforce ownership itself and keeps `403`/`404` behavior precise.
 - `SUPABASE_TABLE_NAME`: Optional. Default `otworker_profiles`.
 - `SUPABASE_JWT_VERIFY`: Set to `true` to require `Authorization: Bearer <access_token>` on `/api/*`.
 - `SUPABASE_JWT_AUDIENCE`: Optional audience claim to enforce.
-- `SUPABASE_JWT_ISSUER`: Optional issuer override. Default is `<SUPABASE_URL>/auth/v1`.
+- `SUPABASE_JWT_ISSUER`: Optional issuer override. Default is `<SUPABASEURL>/auth/v1`.
 
 ## Authentication
 
@@ -56,7 +56,7 @@ When `SUPABASE_JWT_VERIFY=true`, the backend verifies Supabase access tokens loc
 - Ownership rule: profile routes only allow the authenticated owner whose `sub` matches the stored `authUserId`
 - Database access path:
   If `SUPABASE_SERVICE_ROLE_KEY` is set, the backend uses it for database queries and enforces ownership in application code.
-  Otherwise, the backend falls back to `SUPABASE_ANON_KEY` plus the same bearer token so Supabase RLS applies to the signed-in user.
+  Otherwise, the backend falls back to `SUPABASEANONKEY` plus the same bearer token so Supabase RLS applies to the signed-in user.
 
 This flow assumes your Supabase project is using asymmetric signing keys so the JWKS endpoint returns public verification keys.
 
