@@ -139,7 +139,7 @@ export function getSupabaseClient() {
   const config = getAuthConfig();
   if (!isAuthConfigured()) {
     throw new Error(
-      "Supabase client config is missing. Check the environment variables used by /api/auth-config.js before using Google login.",
+      "Supabase client config is missing. Check /auth-config.js before using Google login.",
     );
   }
 

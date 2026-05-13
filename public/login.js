@@ -88,14 +88,14 @@ function buildMissingConfigMessage() {
     : "";
   console.warn(`${LOGIN_LOG_PREFIX} Missing config diagnostics:`, debugSuffix);
   if (missingKeys.length > 0) {
-    return `Thieu bien ${missingKeys.join(", ")} tren frontend.${debugSuffix}`;
+    return `Thieu cau hinh ${missingKeys.join(", ")} trong /auth-config.js.${debugSuffix}`;
   }
 
   if (!diagnostics.hasWindowAuthConfig) {
-    return `Khong nap duoc /api/auth-config.js.${debugSuffix}`;
+    return `Khong nap duoc /auth-config.js.${debugSuffix}`;
   }
 
-  return `Chua co Supabase config hop le tu bien moi truong frontend.${debugSuffix}`;
+  return `Chua co Supabase config hop le trong /auth-config.js.${debugSuffix}`;
 }
 
 function getInitials(displayName, email) {
