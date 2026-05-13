@@ -8,7 +8,7 @@ import {
   isAuthConfigured,
   replayPersistedDebugLogs,
   signInWithGoogle,
-  signOut
+  signOut,
 } from "./auth.js";
 
 const LOGIN_LOG_PREFIX = "[OT Login]";
@@ -36,7 +36,7 @@ logLogin("Module loaded", {
   href: window.location.href,
   hasLoginButton: Boolean(loginButton),
   hasContinueButton: Boolean(continueButton),
-  hasSignOutButton: Boolean(signOutButton)
+  hasSignOutButton: Boolean(signOutButton),
 });
 replayPersistedDebugLogs("login page");
 
@@ -49,11 +49,11 @@ document.addEventListener(
     if (clickedLoginButton) {
       logLogin("Document captured click on login button", {
         tagName: target.tagName,
-        text: clickedLoginButton.textContent?.trim() ?? ""
+        text: clickedLoginButton.textContent?.trim() ?? "",
       });
     }
   },
-  true
+  true,
 );
 
 loginButton.addEventListener("pointerdown", () => {
@@ -82,11 +82,10 @@ function buildMissingConfigMessage() {
     missingKeys.push("SUPABASEANONKEY");
   }
 
-  const debugSuffix =
-    diagnostics.debugEnvironment
-      ? ` Vercel env: ${diagnostics.debugEnvironment}.`
-      : "";
-
+  const debugSuffix = diagnostics.debugEnvironment
+    ? ` Vercel env: ${diagnostics.debugEnvironment}.`
+    : "";
+  console.warn(`${LOGIN_LOG_PREFIX} Missing config diagnostics:`, debugSuffix);
   if (missingKeys.length > 0) {
     return `Thieu bien ${missingKeys.join(", ")} tren frontend.${debugSuffix}`;
   }
@@ -148,7 +147,7 @@ function renderSignedIn(session) {
   logLogin("Render signed-in state", {
     userId: user.id,
     email: user.email,
-    appUrl: getAuthConfig().appUrl
+    appUrl: getAuthConfig().appUrl,
   });
 
   renderAvatar(user);
@@ -185,7 +184,9 @@ async function syncView() {
   if (!session) {
     logLogin("No session on login page");
     renderSignedOut();
-    setMessage("Đăng nhập bằng tài khoản Google để bắt đầu sử dụng OT Tracker.");
+    setMessage(
+      "Đăng nhập bằng tài khoản Google để bắt đầu sử dụng OT Tracker.",
+    );
     return;
   }
 
