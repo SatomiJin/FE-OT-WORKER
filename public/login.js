@@ -25,11 +25,8 @@ const configHint = document.querySelector("#configHint");
 let redirectHandle = 0;
 
 function logLogin(step, detail) {
-  if (detail === undefined) {
-    console.log(`${LOGIN_LOG_PREFIX} ${step}`);
-    return;
-  }
-  console.log(`${LOGIN_LOG_PREFIX} ${step}`, detail);
+  void step;
+  void detail;
 }
 
 logLogin("Module loaded", {
@@ -72,7 +69,6 @@ function setMessage(message, isError = false) {
 
 function buildMissingConfigMessage() {
   const diagnostics = getAuthDiagnostics();
-  console.log(diagnostics);
   const missingKeys = [];
 
   if (!diagnostics.hasSupabaseUrl) {
@@ -86,7 +82,6 @@ function buildMissingConfigMessage() {
   const debugSuffix = diagnostics.debugEnvironment
     ? ` Vercel env: ${diagnostics.debugEnvironment}.`
     : "";
-  console.warn(`${LOGIN_LOG_PREFIX} Missing config diagnostics:`, debugSuffix);
   if (missingKeys.length > 0) {
     return `Thieu cau hinh ${missingKeys.join(", ")} trong /auth-config.js.${debugSuffix}`;
   }

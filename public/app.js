@@ -13,21 +13,13 @@ const APP_LOG_PREFIX = "[OT App]";
 const API_LOG_PREFIX = "[OT API]";
 
 function logApp(step, detail) {
-  if (detail === undefined) {
-    console.log(`${APP_LOG_PREFIX} ${step}`);
-    return;
-  }
-
-  console.log(`${APP_LOG_PREFIX} ${step}`, detail);
+  void step;
+  void detail;
 }
 
 function logApi(step, detail) {
-  if (detail === undefined) {
-    console.log(`${API_LOG_PREFIX} ${step}`);
-    return;
-  }
-
-  console.log(`${API_LOG_PREFIX} ${step}`, detail);
+  void step;
+  void detail;
 }
 
 function formatRequestError(error, fallbackMessage = "Request failed.") {

@@ -10,12 +10,6 @@ function trimTrailingSlash(value) {
 
 function logAuth(step, detail) {
   persistDebugLog(AUTH_LOG_PREFIX, step, detail);
-  if (detail === undefined) {
-    console.log(`${AUTH_LOG_PREFIX} ${step}`);
-    return;
-  }
-
-  console.log(`${AUTH_LOG_PREFIX} ${step}`, detail);
 }
 
 function persistDebugLog(prefix, step, detail) {
@@ -39,29 +33,7 @@ function persistDebugLog(prefix, step, detail) {
 }
 
 export function replayPersistedDebugLogs(scope = "unknown") {
-  try {
-    const logs = JSON.parse(
-      sessionStorage.getItem(DEBUG_LOG_STORAGE_KEY) || "[]",
-    );
-    if (!Array.isArray(logs) || logs.length === 0) {
-      return;
-    }
-
-    console.groupCollapsed(
-      `[OT Debug Replay] ${scope} (${logs.length} entries)`,
-    );
-    for (const entry of logs) {
-      const line = `${entry.time} ${entry.prefix} ${entry.step}`;
-      if (entry.detail === null || entry.detail === undefined) {
-        console.log(line);
-      } else {
-        console.log(line, entry.detail);
-      }
-    }
-    console.groupEnd();
-  } catch {
-    // Ignore replay failures.
-  }
+  void scope;
 }
 
 export function clearPersistedDebugLogs() {
