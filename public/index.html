@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OT Tracker</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Personal OT workspace</p>
+        <h1>Mỗi username là một sổ OT riêng của chính bạn</h1>
+        <p class="subtle">
+          Hồ sơ OT giờ được lấy từ backend theo đúng account đang đăng nhập. JSON chỉ còn là file backup thủ công khi cần.
+        </p>
+      </div>
+      <div class="hero-right">
+        <section class="session-card" aria-label="Auth session">
+          <div class="session-user">
+            <div class="session-avatar-wrap">
+              <img id="sessionAvatar" class="session-avatar" src="" alt="" hidden />
+              <div id="sessionAvatarFallback" class="session-avatar session-avatar--fallback" aria-hidden="true" hidden>OT</div>
+            </div>
+            <div class="session-copy">
+              <span class="session-label">Google session</span>
+              <strong id="authDisplayName">Đang kiểm tra phiên...</strong>
+              <p id="authSessionHint" class="hint">Token tự động đính kèm vào mọi request API.</p>
+            </div>
+          </div>
+          <div class="session-actions">
+            <a id="loginPageLink" class="text-link" href="/login.html" hidden></a>
+            <button id="signOutButton" class="ghost" type="button">Đăng xuất</button>
+          </div>
+        </section>
+        <div class="hero-actions">
+          <button id="saveJsonButton" class="primary">Tải JSON hiện tại</button>
+          <button id="exportButton" class="secondary">Xuất Excel .xls</button>
+          <button id="importJsonButton" class="ghost">Nạp JSON</button>
+          <input id="importJsonInput" type="file" accept=".json,application/json" hidden />
+        </div>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Hồ sơ cá nhân</h2>
+          <p>App chỉ hiển thị đúng hồ sơ OT thuộc account hiện tại. Username bên dưới chỉ dùng khi tạo hồ sơ lần đầu.</p>
+        </div>
+        <form id="profileForm" class="stack">
+          <label>
+            Username hồ sơ
+            <input id="usernameInput" name="username" placeholder="dong-huu-trong" />
+          </label>
+          <div class="form-actions compact-actions">
+            <button type="submit" class="primary">Tải hồ sơ của tôi</button>
+            <button type="button" id="createProfileButton" class="ghost">Tạo hồ sơ cho account này</button>
+            <button type="button" id="deleteProfileButton" class="danger">Xóa hồ sơ</button>
+          </div>
+          <div class="profile-meta">
+            <strong id="activeProfileName">Chưa có hồ sơ</strong>
+            <p id="profileHint" class="hint"></p>
+          </div>
+          <div id="profileList" class="profile-list"></div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Bộ lọc xuất file</h2>
+          <p>Chọn tháng cần xuất. Bảng dưới vẫn giữ toàn bộ OT của username đang mở.</p>
+        </div>
+        <div class="stack">
+          <label>
+            Tháng xuất Excel
+            <input id="exportMonth" type="month" />
+          </label>
+          <p class="hint">
+            Gợi ý an toàn: sau mỗi lần chỉnh xong, hãy tải lại file JSON để có bản backup sạch ngoài trình duyệt.
+          </p>
+          <div class="kpi-row">
+            <article class="kpi">
+              <span>Tổng dòng OT</span>
+              <strong id="entryCount">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Tổng giờ tháng</span>
+              <strong id="monthHours">0h</strong>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Thông tin nhân sự</h2>
+          <p>Khối này đi vào phần header khi bạn xuất file Excel.</p>
+        </div>
+        <form id="employeeForm" class="stack">
+          <label>
+            Ký hiệu
+            <input name="label" placeholder="TRON" />
+          </label>
+          <label>
+            Mã nhân viên
+            <input name="employeeCode" placeholder="MSNV" />
+          </label>
+          <label>
+            Họ và tên
+            <input name="fullName" placeholder="Dong Huu Trong" />
+          </label>
+          <label>
+            Tên sheet
+            <input name="sheetName" placeholder="Trang tính1" />
+          </label>
+        </form>
+      </section>
+
+      <section class="panel panel-wide">
+        <div class="panel-head">
+          <h2>Thêm hoặc sửa dòng OT</h2>
+          <p>Chọn một dòng trong bảng để sửa, hoặc nhập mới rồi lưu vào đúng username đang mở.</p>
+        </div>
+        <section class="timer-card" aria-labelledby="timerTitle">
+          <div class="timer-copy">
+            <p class="eyebrow">Timer OT</p>
+            <h3 id="timerTitle">Bấm giờ theo hồ sơ đang chọn</h3>
+            <p id="timerStatus" class="hint">Chưa có phiên OT nào đang chạy.</p>
+          </div>
+          <div class="timer-metrics">
+            <article class="timer-pill">
+              <span>Bắt đầu</span>
+              <strong id="timerStartedAt">--:--</strong>
+            </article>
+            <article class="timer-pill">
+              <span>Đã chạy</span>
+              <strong id="timerElapsed">0p</strong>
+            </article>
+          </div>
+          <div class="timer-fields">
+            <label class="note-field">
+              Giải trình cho phiên OT đang bấm giờ
+              <textarea id="timerNoteInput" rows="2" placeholder="Ví dụ: retest task OMS-4026"></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="button" id="startTimerButton" class="primary">Bắt đầu OT</button>
+              <button type="button" id="stopTimerButton" class="secondary">Dừng và lưu OT</button>
+            </div>
+          </div>
+        </section>
+        <form id="entryForm" class="entry-form">
+          <input type="hidden" name="id" />
+          <label>
+            Ngày
+            <input name="date" type="date" required />
+          </label>
+          <label>
+            Bắt đầu
+            <input name="startTime" type="time" required />
+          </label>
+          <label>
+            Kết thúc
+            <input name="endTime" type="time" required />
+          </label>
+          <label class="note-field">
+            Giải trình
+            <textarea name="note" rows="3" placeholder="Ví dụ: retest task OMS-4026"></textarea>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="primary">Lưu dòng OT</button>
+            <button type="button" id="resetFormButton" class="ghost">Reset form</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel panel-wide">
+        <div class="panel-head">
+          <h2>Danh sách OT</h2>
+          <p>OT qua ngày vẫn được tính đúng theo chênh lệch thời gian, kể cả lúc kết thúc sau 0 giờ.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ngày</th>
+                <th>Bắt đầu</th>
+                <th>Kết thúc</th>
+                <th>Tổng giờ</th>
+                <th>Giải trình</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="entryTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel panel-wide">
+        <div class="panel-head">
+          <h2>JSON hiện tại</h2>
+          <p>Đây là nội dung của hồ sơ đang mở. Bạn có thể xem nhanh trước khi tải file JSON ra ngoài.</p>
+        </div>
+        <textarea id="jsonPreview" class="json-preview" spellcheck="false"></textarea>
+      </section>
+    </main>
+  </div>
+
+  <template id="emptyState">
+    <tr>
+      <td colspan="6" class="empty">Chưa có dữ liệu OT cho username này. Thêm dòng đầu tiên ở form phía trên.</td>
+    </tr>
+  </template>
+
+  <script src="./auth-config.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+
+</html>

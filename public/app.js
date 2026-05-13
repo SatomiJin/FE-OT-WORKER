@@ -1,0 +1,1389 @@
+import {
+  getAccessToken,
+  getAuthConfig,
+  getUserSnapshot,
+  replayPersistedDebugLogs,
+  refreshSession,
+  requireSession,
+  signOut
+} from "./auth.js";
+
+const API_BASE_URL = getAuthConfig().apiBaseUrl;
+const APP_LOG_PREFIX = "[OT App]";
+const API_LOG_PREFIX = "[OT API]";
+
+function logApp(step, detail) {
+  if (detail === undefined) {
+    console.log(`${APP_LOG_PREFIX} ${step}`);
+    return;
+  }
+
+  console.log(`${APP_LOG_PREFIX} ${step}`, detail);
+}
+
+function logApi(step, detail) {
+  if (detail === undefined) {
+    console.log(`${API_LOG_PREFIX} ${step}`);
+    return;
+  }
+
+  console.log(`${API_LOG_PREFIX} ${step}`, detail);
+}
+
+function formatRequestError(error, fallbackMessage = "Request failed.") {
+  if (!error) {
+    return fallbackMessage;
+  }
+
+  const statusText = error.status ? ` [HTTP ${error.status}]` : "";
+  const message = error.message ? String(error.message).trim() : fallbackMessage;
+  return `${message}${statusText}`;
+}
+
+replayPersistedDebugLogs("app page");
+
+const state = {
+  suggestedUsername: "",
+  activeUsername: "",
+  profiles: {},
+  profileSaveHandle: 0,
+  timerNoteSaveHandle: 0
+};
+
+const profileForm = document.querySelector("#profileForm");
+const usernameInput = document.querySelector("#usernameInput");
+const employeeForm = document.querySelector("#employeeForm");
+const entryForm = document.querySelector("#entryForm");
+const exportMonthInput = document.querySelector("#exportMonth");
+const profileList = document.querySelector("#profileList");
+const entryTableBody = document.querySelector("#entryTableBody");
+const saveJsonButton = document.querySelector("#saveJsonButton");
+const exportButton = document.querySelector("#exportButton");
+const importJsonInput = document.querySelector("#importJsonInput");
+const importJsonButton = document.querySelector("#importJsonButton");
+const resetFormButton = document.querySelector("#resetFormButton");
+const createProfileButton = document.querySelector("#createProfileButton");
+const deleteProfileButton = document.querySelector("#deleteProfileButton");
+const entryCount = document.querySelector("#entryCount");
+const monthHours = document.querySelector("#monthHours");
+const emptyStateTemplate = document.querySelector("#emptyState");
+const jsonPreview = document.querySelector("#jsonPreview");
+const activeProfileName = document.querySelector("#activeProfileName");
+const profileHint = document.querySelector("#profileHint");
+const authDisplayName = document.querySelector("#authDisplayName");
+const authSessionHint = document.querySelector("#authSessionHint");
+const sessionAvatar = document.querySelector("#sessionAvatar");
+const sessionAvatarFallback = document.querySelector("#sessionAvatarFallback");
+const loginPageLink = document.querySelector("#loginPageLink");
+const signOutButton = document.querySelector("#signOutButton");
+const timerStatus = document.querySelector("#timerStatus");
+const timerStartedAt = document.querySelector("#timerStartedAt");
+const timerElapsed = document.querySelector("#timerElapsed");
+const timerNoteInput = document.querySelector("#timerNoteInput");
+const startTimerButton = document.querySelector("#startTimerButton");
+const stopTimerButton = document.querySelector("#stopTimerButton");
+const employeeFields = {
+  label: employeeForm.elements.namedItem("label"),
+  employeeCode: employeeForm.elements.namedItem("employeeCode"),
+  fullName: employeeForm.elements.namedItem("fullName"),
+  sheetName: employeeForm.elements.namedItem("sheetName")
+};
+const entryFields = {
+  id: entryForm.elements.namedItem("id"),
+  date: entryForm.elements.namedItem("date"),
+  startTime: entryForm.elements.namedItem("startTime"),
+  endTime: entryForm.elements.namedItem("endTime"),
+  note: entryForm.elements.namedItem("note")
+};
+
+function pad(value) {
+  return String(value).padStart(2, "0");
+}
+
+function slugifyUsername(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function encodePath(value) {
+  return encodeURIComponent(String(value ?? ""));
+}
+
+function createBlankProfile(username = "my-profile") {
+  const now = new Date();
+  const defaultMonth = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+
+  return {
+    username,
+    selectedMonth: defaultMonth,
+    employee: {
+      label: username.slice(0, 4).toUpperCase() || "DEMO",
+      employeeCode: "",
+      fullName: "",
+      sheetName: "Trang tinh1"
+    },
+    entries: [],
+    activeTimer: null
+  };
+}
+
+function sanitizeTimer(rawTimer) {
+  if (!rawTimer || typeof rawTimer !== "object") {
+    return null;
+  }
+
+  const startedAt = String(rawTimer.startedAt ?? "").trim();
+  if (!startedAt || Number.isNaN(new Date(startedAt).getTime())) {
+    return null;
+  }
+
+  return {
+    startedAt,
+    note: String(rawTimer.note ?? "").trim()
+  };
+}
+
+function sanitizeEntry(rawEntry) {
+  return {
+    id: String(rawEntry?.id ?? "").trim(),
+    date: String(rawEntry?.date ?? "").trim(),
+    startTime: String(rawEntry?.startTime ?? "").trim(),
+    endTime: String(rawEntry?.endTime ?? "").trim(),
+    note: String(rawEntry?.note ?? "").trim()
+  };
+}
+
+function sanitizeProfile(rawProfile, fallbackUsername = "my-profile") {
+  const username = slugifyUsername(rawProfile?.username ?? fallbackUsername) || "my-profile";
+  const employee = rawProfile?.employee ?? {};
+  const entries = Array.isArray(rawProfile?.entries) ? rawProfile.entries : [];
+
+  return {
+    username,
+    selectedMonth: String(rawProfile?.selectedMonth ?? "").trim(),
+    employee: {
+      label: String(employee.label ?? (username.slice(0, 4).toUpperCase() || "DEMO")).trim() || "DEMO",
+      employeeCode: String(employee.employeeCode ?? "").trim(),
+      fullName: String(employee.fullName ?? "").trim(),
+      sheetName: String(employee.sheetName ?? "Trang tinh1").trim() || "Trang tinh1"
+    },
+    activeTimer: sanitizeTimer(rawProfile?.activeTimer),
+    entries: entries
+      .map((entry) => sanitizeEntry(entry))
+      .filter((entry) => entry.id && entry.date && entry.startTime && entry.endTime)
+  };
+}
+
+function mergeProfile(profile) {
+  const normalizedProfile = sanitizeProfile(profile, profile?.username);
+  state.profiles = {
+    [normalizedProfile.username]: normalizedProfile
+  };
+  state.activeUsername = normalizedProfile.username;
+  return normalizedProfile;
+}
+
+function removeProfileFromState(username) {
+  const normalized = slugifyUsername(username);
+  delete state.profiles[normalized];
+  if (state.activeUsername === normalized) {
+    state.activeUsername = "";
+  }
+}
+
+function getActiveProfile() {
+  return state.profiles[state.activeUsername];
+}
+
+function requireActiveProfile(actionLabel = "thuc hien thao tac nay") {
+  const profile = getActiveProfile();
+  if (!profile) {
+    throw new Error(`Chua mo duoc ho so OT cua account hien tai, nen khong the ${actionLabel}. Hay bam "Tai ho so cua toi" truoc.`);
+  }
+
+  return profile;
+}
+
+function setActiveUsername(username) {
+  const normalized = slugifyUsername(username);
+  if (!normalized || !state.profiles[normalized]) {
+    return false;
+  }
+
+  state.activeUsername = normalized;
+  usernameInput.value = normalized;
+  syncEmployeeForm();
+  fillEntryForm();
+  exportMonthInput.value = getSelectedMonthForProfile(getActiveProfile());
+  renderAll();
+  return true;
+}
+
+function guessMonthForProfile(profile) {
+  const firstEntry = [...(profile?.entries ?? [])]
+    .sort((left, right) => `${left.date} ${left.startTime}`.localeCompare(`${right.date} ${right.startTime}`))[0];
+
+  if (firstEntry?.date?.slice(0, 7)) {
+    return firstEntry.date.slice(0, 7);
+  }
+
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+}
+
+function getSelectedMonthForProfile(profile) {
+  if (profile?.selectedMonth && /^\d{4}-\d{2}$/.test(profile.selectedMonth)) {
+    return profile.selectedMonth;
+  }
+
+  return guessMonthForProfile(profile);
+}
+
+function minutesBetween(startTime, endTime) {
+  const [startHour, startMinute] = startTime.split(":").map(Number);
+  const [endHour, endMinute] = endTime.split(":").map(Number);
+  const start = startHour * 60 + startMinute;
+  const end = endHour === 24 ? 1440 : endHour * 60 + endMinute;
+  const diff = end >= start ? end - start : 1440 - start + end;
+  return diff;
+}
+
+function timeToMinutes(timeText) {
+  const [hourText, minuteText] = timeText.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  return hour === 24 ? 1440 : hour * 60 + minute;
+}
+
+function normalizeTime24h(value) {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const match = trimmed.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const isMidnightBoundary = hour === 24 && minute === 0;
+  const isRegularTime = hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+
+  if (!isMidnightBoundary && !isRegularTime) {
+    return null;
+  }
+
+  return `${pad(hour)}:${pad(minute)}`;
+}
+
+function formatDurationMinutes(totalMinutes) {
+  const minutes = Math.max(0, Math.round(totalMinutes));
+  const hoursPart = Math.floor(minutes / 60);
+  const minutesPart = minutes % 60;
+
+  if (hoursPart === 0) {
+    return `${minutesPart}p`;
+  }
+
+  if (minutesPart === 0) {
+    return `${hoursPart}h`;
+  }
+
+  return `${hoursPart}h${pad(minutesPart)}p`;
+}
+
+function formatDateInputValue(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function formatTimeInputValue(date) {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatDateTimeDisplay(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getTimer(profile = getActiveProfile()) {
+  return sanitizeTimer(profile?.activeTimer);
+}
+
+function getTimerDurationMinutes(timer, endDate = new Date()) {
+  if (!timer) {
+    return 0;
+  }
+
+  const startedAt = new Date(timer.startedAt);
+  if (Number.isNaN(startedAt.getTime())) {
+    return 0;
+  }
+
+  const diffMs = endDate.getTime() - startedAt.getTime();
+  return Math.max(0, Math.round(diffMs / 60000));
+}
+
+function buildEntryFromTimer(timer, endDate = new Date()) {
+  const startedAt = new Date(timer.startedAt);
+  if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+
+  return {
+    id: "",
+    date: formatDateInputValue(startedAt),
+    startTime: formatTimeInputValue(startedAt),
+    endTime: formatTimeInputValue(endDate),
+    note: String(timer.note ?? "").trim()
+  };
+}
+
+function getSelectedMonth() {
+  const profile = getActiveProfile();
+  return exportMonthInput.value || getSelectedMonthForProfile(profile);
+}
+
+function filteredEntriesForMonth() {
+  const profile = getActiveProfile();
+  const entries = profile?.entries ?? [];
+  const month = getSelectedMonth();
+  if (!month) {
+    return [...entries];
+  }
+
+  return entries.filter((entry) => entry.date.startsWith(month));
+}
+
+function syncEmployeeForm() {
+  const profile = getActiveProfile();
+  const employee = profile?.employee ?? createBlankProfile().employee;
+  employeeFields.label.value = employee.label ?? "";
+  employeeFields.employeeCode.value = employee.employeeCode ?? "";
+  employeeFields.fullName.value = employee.fullName ?? "";
+  employeeFields.sheetName.value = employee.sheetName ?? "";
+}
+
+function fillEntryForm(entry = null) {
+  entryFields.id.value = entry?.id ?? "";
+  entryFields.date.value = entry?.date ?? "";
+  const start = normalizeTime24h(entry?.startTime ?? "") ?? "";
+  const end = normalizeTime24h(entry?.endTime ?? "") ?? "";
+  // type="time" không nhận "24:00", dùng "00:00" thay thế
+  entryFields.startTime.value = start === "24:00" ? "00:00" : start;
+  entryFields.endTime.value = end === "24:00" ? "00:00" : end;
+  entryFields.note.value = entry?.note ?? "";
+}
+
+function syncStateFromEmployeeForm() {
+  const profile = getActiveProfile();
+  if (!profile) {
+    return;
+  }
+
+  profile.employee = {
+    label: employeeFields.label.value.trim() || "DEMO",
+    employeeCode: employeeFields.employeeCode.value.trim(),
+    fullName: employeeFields.fullName.value.trim(),
+    sheetName: employeeFields.sheetName.value.trim() || "Trang tinh1"
+  };
+}
+
+function serializeProfile(profile) {
+  return {
+    username: profile.username,
+    selectedMonth: profile.selectedMonth,
+    employee: {
+      label: profile.employee.label,
+      employeeCode: profile.employee.employeeCode,
+      fullName: profile.employee.fullName,
+      sheetName: profile.employee.sheetName
+    },
+    activeTimer: profile.activeTimer ? {
+      startedAt: profile.activeTimer.startedAt,
+      note: profile.activeTimer.note
+    } : null,
+    entries: profile.entries.map((entry) => ({
+      id: entry.id,
+      date: entry.date,
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+      note: entry.note
+    }))
+  };
+}
+
+function exportableProfile(profile = getActiveProfile()) {
+  return profile ? serializeProfile(sanitizeProfile(profile, state.activeUsername)) : createBlankProfile();
+}
+
+function sortEntries(entries) {
+  return [...entries].sort((left, right) => `${left.date} ${left.startTime}`.localeCompare(`${right.date} ${right.startTime}`));
+}
+
+async function apiRequest(path, options = {}) {
+  const { method = "GET", body, retryOnUnauthorized = true } = options;
+  const token = await getAccessToken();
+  logApi("Preparing request", {
+    method,
+    url: `${API_BASE_URL}${path}`,
+    hasToken: Boolean(token),
+    retryOnUnauthorized
+  });
+
+  if (!token) {
+    console.error(`${API_LOG_PREFIX} Missing access token`, { path, method });
+    throw new Error("Không tìm thấy Supabase access token. Hãy đăng nhập lại.");
+  }
+
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(body ? { "Content-Type": "application/json" } : {})
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (error) {
+    console.error(`${API_LOG_PREFIX} Network request failed`, {
+      method,
+      url: `${API_BASE_URL}${path}`,
+      error
+    });
+    throw error;
+  }
+
+  logApi("Received response", {
+    method,
+    url: `${API_BASE_URL}${path}`,
+    status: response.status,
+    ok: response.ok
+  });
+
+  if (response.status === 401 && retryOnUnauthorized) {
+    try {
+      logApi("Received 401, attempting refresh");
+      const refreshedSession = await refreshSession();
+      if (refreshedSession?.access_token) {
+        logApi("Refresh succeeded, retrying request", { method, path });
+        return apiRequest(path, {
+          method,
+          body,
+          retryOnUnauthorized: false
+        });
+      }
+    } catch {
+      console.error(`${API_LOG_PREFIX} Refresh failed after 401, redirecting to login`);
+      window.location.href = loginPageLink.href;
+      return null;
+    }
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  const text = await response.text();
+  const payload = text
+    ? (() => {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return text;
+        }
+      })()
+    : null;
+
+  if (!response.ok) {
+    console.error(`${API_LOG_PREFIX} Request failed`, {
+      method,
+      url: `${API_BASE_URL}${path}`,
+      status: response.status,
+      payload
+    });
+    const error = new Error(
+      payload && typeof payload === "object" && "message" in payload
+        ? payload.message
+        : `Request failed with status ${response.status}.`
+    );
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  return payload;
+}
+
+async function apiRequestWithFallback(primaryPath, fallbackPath, options = {}) {
+  try {
+    return await apiRequest(primaryPath, options);
+  } catch (error) {
+    if (!fallbackPath || ![404, 405, 501].includes(error?.status)) {
+      throw error;
+    }
+
+    logApi("Primary route unavailable, falling back", {
+      primaryPath,
+      fallbackPath,
+      status: error.status
+    });
+    return apiRequest(fallbackPath, options);
+  }
+}
+
+function getInitials(displayName, email) {
+  const name = displayName || email || "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function getSuggestedUsernameFromSession(session) {
+  const user = getUserSnapshot(session);
+  const emailPrefix = user.email.includes("@") ? user.email.split("@")[0] : user.email;
+  return slugifyUsername(emailPrefix || user.displayName || user.id) || "my-profile";
+}
+
+function syncUsernameField() {
+  const profile = getActiveProfile();
+  if (profile) {
+    usernameInput.value = profile.username;
+    usernameInput.readOnly = true;
+    return;
+  }
+
+  usernameInput.readOnly = false;
+  usernameInput.value = state.suggestedUsername;
+}
+
+function renderAuthSession(session) {
+  const user = getUserSnapshot(session);
+  authDisplayName.textContent = user.displayName || user.email || "Người dùng";
+  authSessionHint.textContent = user.email || "Đã xác thực";
+
+  if (sessionAvatar && sessionAvatarFallback) {
+    const initials = getInitials(user.displayName, user.email);
+    sessionAvatarFallback.textContent = initials;
+
+    if (user.avatarUrl) {
+      sessionAvatar.src = user.avatarUrl;
+      sessionAvatar.alt = user.displayName || user.email || "Avatar";
+      sessionAvatar.hidden = false;
+      sessionAvatarFallback.hidden = true;
+      sessionAvatar.onerror = () => {
+        sessionAvatar.hidden = true;
+        sessionAvatarFallback.hidden = false;
+      };
+    } else {
+      sessionAvatar.hidden = true;
+      sessionAvatarFallback.hidden = false;
+    }
+  }
+}
+
+async function fetchMyProfileFromApi() {
+  const username =
+    slugifyUsername(getActiveProfile()?.username) ||
+    slugifyUsername(usernameInput.value) ||
+    state.suggestedUsername;
+
+  return sanitizeProfile(
+    await apiRequestWithFallback(
+      "/api/profiles/me",
+      username ? `/api/profiles/${encodePath(username)}` : null
+    ),
+    username || state.suggestedUsername
+  );
+}
+
+async function createProfileInApi(username) {
+  return sanitizeProfile(
+    await apiRequestWithFallback(
+      "/api/profiles/me/init",
+      "/api/profiles",
+      {
+        method: "POST",
+        body: { username }
+      }
+    ),
+    username
+  );
+}
+
+async function updateProfileInApi(profile) {
+  return sanitizeProfile(
+    await apiRequestWithFallback(
+      "/api/profiles/me",
+      `/api/profiles/${encodePath(profile.username)}`,
+      {
+        method: "PUT",
+        body: {
+          selectedMonth: profile.selectedMonth,
+          employee: {
+            label: profile.employee.label,
+            employeeCode: profile.employee.employeeCode,
+            fullName: profile.employee.fullName,
+            sheetName: profile.employee.sheetName
+          }
+        }
+      }
+    ),
+    profile.username
+  );
+}
+
+async function deleteProfileInApi(username) {
+  await apiRequest(`/api/profiles/${encodePath(username)}`, { method: "DELETE" });
+}
+
+async function createEntryInApi(username, entry) {
+  return sanitizeEntry(
+    await apiRequestWithFallback(
+      "/api/profiles/me/entries",
+      `/api/profiles/${encodePath(username)}/entries`,
+      {
+        method: "POST",
+        body: {
+          date: entry.date,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          note: entry.note
+        }
+      }
+    )
+  );
+}
+
+async function updateEntryInApi(username, entryId, entry) {
+  return sanitizeEntry(
+    await apiRequestWithFallback(
+      `/api/profiles/me/entries/${encodePath(entryId)}`,
+      `/api/profiles/${encodePath(username)}/entries/${encodePath(entryId)}`,
+      {
+        method: "PUT",
+        body: {
+          date: entry.date,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          note: entry.note
+        }
+      }
+    )
+  );
+}
+
+async function deleteEntryInApi(username, entryId) {
+  await apiRequestWithFallback(
+    `/api/profiles/me/entries/${encodePath(entryId)}`,
+    `/api/profiles/${encodePath(username)}/entries/${encodePath(entryId)}`,
+    { method: "DELETE" }
+  );
+}
+
+async function startTimerInApi(username, note) {
+  return sanitizeTimer(
+    await apiRequestWithFallback(
+      "/api/profiles/me/timer/start",
+      `/api/profiles/${encodePath(username)}/timer/start`,
+      {
+        method: "POST",
+        body: { note }
+      }
+    )
+  );
+}
+
+async function updateTimerInApi(username, note) {
+  return sanitizeTimer(
+    await apiRequestWithFallback(
+      "/api/profiles/me/timer",
+      `/api/profiles/${encodePath(username)}/timer`,
+      {
+        method: "PUT",
+        body: { note }
+      }
+    )
+  );
+}
+
+async function stopTimerInApi(username, note) {
+  return sanitizeEntry(
+    await apiRequestWithFallback(
+      "/api/profiles/me/timer/stop",
+      `/api/profiles/${encodePath(username)}/timer/stop`,
+      {
+        method: "POST",
+        body: { note }
+      }
+    )
+  );
+}
+
+function renderProfileList() {
+  profileList.innerHTML = "";
+  const profile = getActiveProfile();
+  if (!profile) {
+    return;
+  }
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "profile-chip profile-chip-active";
+  button.dataset.username = profile.username;
+  button.textContent = profile.username;
+  profileList.append(button);
+}
+
+function renderStats() {
+  const profile = getActiveProfile();
+  const entries = profile?.entries ?? [];
+  entryCount.textContent = String(entries.length);
+  const totalMinutes = filteredEntriesForMonth().reduce(
+    (sum, entry) => sum + minutesBetween(entry.startTime, entry.endTime),
+    0
+  );
+  monthHours.textContent = formatDurationMinutes(totalMinutes);
+}
+
+function renderJsonPreview() {
+  const profile = getActiveProfile();
+  jsonPreview.value = JSON.stringify(exportableProfile(profile), null, 2);
+}
+
+function renderTimerPanel() {
+  const profile = getActiveProfile();
+  const timer = getTimer(profile);
+  const hasProfile = Boolean(profile);
+
+  timerNoteInput.disabled = !hasProfile;
+  startTimerButton.disabled = !hasProfile || Boolean(timer);
+  stopTimerButton.disabled = !timer;
+
+  if (!profile) {
+    timerStatus.textContent = "Chưa có hồ sơ để bấm giờ.";
+    timerStartedAt.textContent = "--:--";
+    timerElapsed.textContent = "0p";
+    if (timerNoteInput.value) {
+      timerNoteInput.value = "";
+    }
+    return;
+  }
+
+  if (!timer) {
+    timerStatus.textContent = `Hồ sơ "${profile.username}" chưa có phiên OT nào đang chạy trên backend.`;
+    timerStartedAt.textContent = "--:--";
+    timerElapsed.textContent = "0p";
+    if (timerNoteInput.value) {
+      timerNoteInput.value = "";
+    }
+    return;
+  }
+
+  timerStatus.textContent = `Đang bấm giờ cho hồ sơ "${profile.username}". Khi dừng, backend sẽ tạo dòng OT mới.`;
+  timerStartedAt.textContent = formatDateTimeDisplay(timer.startedAt);
+  timerElapsed.textContent = formatDurationMinutes(getTimerDurationMinutes(timer));
+  if (document.activeElement !== timerNoteInput && timerNoteInput.value !== (timer.note ?? "")) {
+    timerNoteInput.value = timer.note ?? "";
+  }
+}
+
+function renderTable() {
+  const rows = sortEntries(filteredEntriesForMonth());
+
+  entryTableBody.innerHTML = "";
+
+  if (rows.length === 0) {
+    entryTableBody.append(emptyStateTemplate.content.cloneNode(true));
+    renderStats();
+    renderJsonPreview();
+    return;
+  }
+
+  rows.forEach((entry) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${entry.date}</td>
+      <td>${entry.startTime}</td>
+      <td>${entry.endTime}</td>
+      <td><span class="hours-badge">${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</span></td>
+      <td>${entry.note || ""}</td>
+      <td>
+        <div class="row-actions">
+          <button class="edit" data-id="${entry.id}" type="button">Sua</button>
+          <button class="delete" data-id="${entry.id}" type="button">Xoa</button>
+        </div>
+      </td>
+    `;
+    entryTableBody.append(tr);
+  });
+
+  renderStats();
+  renderJsonPreview();
+}
+
+function renderProfileMeta() {
+  const profile = getActiveProfile();
+  if (!profile) {
+    activeProfileName.textContent = "Chưa có hồ sơ";
+    profileHint.textContent = "Account đang nhập hiện tại chưa có hồ sơ OT. Có thể đặt username và tạo hồ sơ mới.";
+    syncUsernameField();
+    return;
+  }
+
+  activeProfileName.textContent = profile.employee.fullName || profile.username;
+  profileHint.textContent = `Dang hien thi duy nhat ho so OT cua account dang nhap tren backend ${API_BASE_URL}. JSON export chi dung de backup thu cong.`;
+  syncUsernameField();
+}
+
+function renderAll() {
+  renderProfileList();
+  renderProfileMeta();
+  renderTimerPanel();
+  renderTable();
+}
+
+function triggerDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadJson() {
+  const profile = exportableProfile();
+  const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
+  triggerDownload(blob, `${profile.username}.ot.json`);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;");
+}
+
+function buildExcelMarkup(profile, month) {
+  const rows = sortEntries(filteredEntriesForMonth());
+  const sheetTitle = escapeHtml(profile.employee.sheetName || "Trang tinh 1");
+  const fullName = escapeHtml(profile.employee.fullName || profile.username);
+  const employeeCode = escapeHtml(profile.employee.employeeCode || "");
+  const label = escapeHtml(profile.employee.label || "DEMO");
+  const monthLabel = escapeHtml(month || guessMonthForProfile(profile));
+
+  const bodyRows = rows.length > 0
+    ? rows.map((entry) => `
+      <tr>
+        <td>${label}</td>
+        <td>${employeeCode}</td>
+        <td>${fullName}</td>
+        <td>${escapeHtml(entry.date)}</td>
+        <td>${escapeHtml(entry.startTime)}</td>
+        <td>${escapeHtml(entry.endTime)}</td>
+        <td>${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</td>
+        <td>${escapeHtml(entry.note || "")}</td>
+      </tr>
+    `).join("")
+    : `
+      <tr>
+        <td>${label}</td>
+        <td>${employeeCode}</td>
+        <td>${fullName}</td>
+        <td>${escapeHtml(monthLabel)}-01</td>
+        <td>18:00</td>
+        <td>20:00</td>
+        <td>2h</td>
+        <td>Chua co du lieu OT trong thang nay</td>
+      </tr>
+    `;
+
+  return `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40">
+  <head>
+    <meta charset="UTF-8">
+    <!--[if gte mso 9]>
+    <xml>
+      <x:ExcelWorkbook>
+        <x:ExcelWorksheets>
+          <x:ExcelWorksheet>
+            <x:Name>${sheetTitle}</x:Name>
+            <x:WorksheetOptions>
+              <x:FreezePanes/>
+              <x:FrozenNoSplit/>
+              <x:SplitHorizontal>1</x:SplitHorizontal>
+              <x:TopRowBottomPane>1</x:TopRowBottomPane>
+              <x:ActivePane>2</x:ActivePane>
+            </x:WorksheetOptions>
+          </x:ExcelWorksheet>
+        </x:ExcelWorksheets>
+      </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <style>
+      body { font-family: Arial, sans-serif; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #9fb79a; padding: 8px; vertical-align: top; }
+      th { background: #d9ead3; font-weight: 700; }
+      .meta { margin-bottom: 10px; }
+    </style>
+  </head>
+  <body>
+    <div class="meta">OT thang ${monthLabel} - ${fullName}</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Ky hieu</th>
+          <th>MSNV</th>
+          <th>Ho va ten</th>
+          <th>Ngay ghi nhan OT</th>
+          <th>Thoi gian vao ca</th>
+          <th>Thoi gian ra ca</th>
+          <th>Tong gio OT</th>
+          <th>Giai trinh</th>
+        </tr>
+      </thead>
+      <tbody>${bodyRows}
+      </tbody>
+    </table>
+  </body>
+</html>`;
+}
+
+function downloadExcel() {
+  const profile = exportableProfile();
+  const month = getSelectedMonth() || guessMonthForProfile(profile);
+  const markup = buildExcelMarkup(profile, month);
+  const blob = new Blob(["\ufeff", markup], {
+    type: "application/vnd.ms-excel;charset=utf-8"
+  });
+  triggerDownload(blob, `${profile.username}-${month}.xls`);
+}
+
+async function openMyProfile(options = {}) {
+  try {
+    const profile = await fetchMyProfileFromApi();
+    mergeProfile(profile);
+    setActiveUsername(profile.username);
+    return true;
+  } catch (error) {
+    if (!options.silent) {
+      if (error.status === 404) {
+        window.alert("Account dang nhap hien tai chua co ho so tren backend. Hay bam \"Tao ho so moi\" neu can.");
+      } else {
+        window.alert(error.message);
+      }
+    }
+    return false;
+  }
+}
+
+async function createProfile(username) {
+  const normalized = slugifyUsername(username) || state.suggestedUsername;
+  if (!normalized) {
+    window.alert("Nhap username truoc khi tao ho so.");
+    return false;
+  }
+
+  try {
+    const profile = await createProfileInApi(normalized);
+    mergeProfile(profile);
+    setActiveUsername(profile.username);
+    return true;
+  } catch (error) {
+    if (error.status === 409) {
+      return openMyProfile();
+    }
+
+    window.alert(error.message);
+    return false;
+  }
+}
+
+function queueProfileSave() {
+  const profile = getActiveProfile();
+  if (!profile) {
+    return;
+  }
+
+  syncStateFromEmployeeForm();
+  profile.selectedMonth = getSelectedMonth();
+  window.clearTimeout(state.profileSaveHandle);
+  state.profileSaveHandle = window.setTimeout(async () => {
+    try {
+      const updatedProfile = await updateProfileInApi(profile);
+      mergeProfile(updatedProfile);
+      if (state.activeUsername === updatedProfile.username) {
+        renderAll();
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, 350);
+}
+
+async function saveActiveProfile() {
+  const profile = getActiveProfile();
+  if (!profile) {
+    return;
+  }
+
+  syncStateFromEmployeeForm();
+  profile.selectedMonth = getSelectedMonth();
+  const updatedProfile = await updateProfileInApi(profile);
+  mergeProfile(updatedProfile);
+  if (state.activeUsername === updatedProfile.username) {
+    renderAll();
+  }
+}
+
+async function deleteProfile(username) {
+  const normalized = slugifyUsername(username);
+  await deleteProfileInApi(normalized);
+  removeProfileFromState(normalized);
+  exportMonthInput.value = "";
+  fillEntryForm();
+  syncEmployeeForm();
+  renderAll();
+}
+
+async function importProfileFromFile(file) {
+  if (!file) {
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const parsed = JSON.parse(String(reader.result || "{}"));
+      const targetUsername =
+        slugifyUsername(getActiveProfile()?.username) ||
+        slugifyUsername(usernameInput.value) ||
+        state.suggestedUsername ||
+        "my-profile";
+      const profile = sanitizeProfile(
+        {
+          ...parsed,
+          username: targetUsername
+        },
+        targetUsername
+      );
+
+      try {
+        await createProfileInApi(profile.username);
+      } catch (error) {
+        if (error.status !== 409) {
+          throw error;
+        }
+      }
+
+      mergeProfile(await updateProfileInApi(profile));
+
+      for (const entry of profile.entries) {
+        await createEntryInApi(profile.username, entry);
+      }
+
+      await openMyProfile({ silent: true });
+
+      if (profile.activeTimer) {
+        window.alert("Da import profile va entries. Active timer trong file JSON khong duoc phuc hoi vi backend tu quan ly thoi diem start/stop.");
+      }
+    } catch (error) {
+      window.alert(`Khong doc duoc file JSON: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      importJsonInput.value = "";
+    }
+  };
+  reader.readAsText(file, "utf8");
+}
+
+async function startTimerForActiveProfile() {
+  try {
+    const profile = requireActiveProfile("bat dau OT");
+    profile.activeTimer = await startTimerInApi(profile.username, timerNoteInput.value.trim());
+    renderAll();
+  } catch (error) {
+    window.alert(formatRequestError(error, "Khong bat dau duoc timer."));
+  }
+}
+
+async function stopTimerForActiveProfile() {
+  try {
+    const profile = requireActiveProfile("dung va luu OT");
+    const timer = getTimer(profile);
+    if (!timer) {
+      window.alert("Chua co timer dang chay de dung.");
+      return;
+    }
+
+    await stopTimerInApi(profile.username, timerNoteInput.value.trim());
+    await openMyProfile({ silent: true });
+    fillEntryForm();
+  } catch (error) {
+    window.alert(formatRequestError(error, "Khong dung duoc timer."));
+  }
+}
+
+function queueTimerNoteSave() {
+  const profile = getActiveProfile();
+  const timer = getTimer(profile);
+  if (!profile || !timer) {
+    return;
+  }
+
+  profile.activeTimer.note = timerNoteInput.value.trim();
+  window.clearTimeout(state.timerNoteSaveHandle);
+  state.timerNoteSaveHandle = window.setTimeout(async () => {
+    try {
+      profile.activeTimer = await updateTimerInApi(profile.username, timerNoteInput.value.trim());
+      renderTimerPanel();
+      renderJsonPreview();
+    } catch (error) {
+      console.error(error);
+    }
+  }, 350);
+}
+
+async function loadInitialState() {
+  logApp("loadInitialState start", {
+    href: window.location.href,
+    apiBaseUrl: API_BASE_URL
+  });
+  const session = await requireSession();
+  if (!session) {
+    logApp("No session returned from requireSession");
+    return;
+  }
+
+  logApp("Session ready on app page", {
+    userId: session.user?.id ?? null,
+    email: session.user?.email ?? null
+  });
+  state.suggestedUsername = getSuggestedUsernameFromSession(session);
+  renderAuthSession(session);
+
+  renderAll();
+
+  logApp("Opening profile for signed-in account", {
+    suggestedUsername: state.suggestedUsername
+  });
+  const opened = await openMyProfile({ silent: true });
+  if (!opened) {
+    renderProfileMeta();
+    logApp("No profile found for signed-in account", {
+      suggestedUsername: state.suggestedUsername
+    });
+  }
+}
+
+profileForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await openMyProfile();
+});
+
+profileList.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-username]");
+  if (!button) {
+    return;
+  }
+
+  await openMyProfile();
+});
+
+employeeForm.addEventListener("input", () => {
+  const profile = getActiveProfile();
+  if (!profile) {
+    return;
+  }
+
+  syncStateFromEmployeeForm();
+  renderProfileMeta();
+  renderJsonPreview();
+  queueProfileSave();
+});
+
+entryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const normalizedStartTime = entryFields.startTime.value || null;
+  const normalizedEndTime = entryFields.endTime.value || null;
+
+  if (!normalizedStartTime || !normalizedEndTime) {
+    window.alert("Vui lòng chọn giờ bắt đầu và kết thúc.");
+    return;
+  }
+
+  const entry = {
+    id: entryFields.id.value.trim(),
+    date: entryFields.date.value,
+    startTime: normalizedStartTime,
+    endTime: normalizedEndTime,
+    note: entryFields.note.value.trim()
+  };
+
+  if (!entry.date || !entry.startTime || !entry.endTime) {
+    return;
+  }
+
+  try {
+    const profile = requireActiveProfile("luu dong OT");
+    if (entry.id) {
+      await updateEntryInApi(profile.username, entry.id, entry);
+    } else {
+      await createEntryInApi(profile.username, entry);
+    }
+
+    await openMyProfile({ silent: true });
+    fillEntryForm();
+  } catch (error) {
+    window.alert(formatRequestError(error, "Khong luu duoc dong OT."));
+  }
+});
+
+
+entryTableBody.addEventListener("click", async (event) => {
+  const button = event.target.closest("button");
+  if (!button) {
+    return;
+  }
+
+  if (button.classList.contains("edit")) {
+    const profile = getActiveProfile();
+    const entry = profile?.entries.find((item) => item.id === button.dataset.id);
+    if (!entry) {
+      return;
+    }
+    fillEntryForm(entry);
+    entryForm.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
+  if (button.classList.contains("delete")) {
+    try {
+      const profile = requireActiveProfile("xoa dong OT");
+      const entry = profile.entries.find((item) => item.id === button.dataset.id);
+      if (!entry) {
+        window.alert("Khong tim thay dong OT can xoa trong du lieu hien tai.");
+        return;
+      }
+
+      await deleteEntryInApi(profile.username, entry.id);
+      await openMyProfile({ silent: true });
+      fillEntryForm();
+    } catch (error) {
+      window.alert(formatRequestError(error, "Khong xoa duoc dong OT."));
+    }
+  }
+});
+
+timerNoteInput.addEventListener("input", () => {
+  queueTimerNoteSave();
+});
+
+startTimerButton.addEventListener("click", async () => {
+  await startTimerForActiveProfile();
+});
+
+stopTimerButton.addEventListener("click", async () => {
+  await stopTimerForActiveProfile();
+});
+
+saveJsonButton.addEventListener("click", async () => {
+  try {
+    await saveActiveProfile();
+  } catch (error) {
+    console.error(error);
+  }
+  downloadJson();
+});
+
+createProfileButton.addEventListener("click", async () => {
+  await createProfile(usernameInput.value);
+});
+
+deleteProfileButton.addEventListener("click", async () => {
+  const profile = getActiveProfile();
+  if (!profile) {
+    return;
+  }
+
+  const confirmed = window.confirm(`Xoa ho so "${profile.username}" tren backend?`);
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await deleteProfile(profile.username);
+  } catch (error) {
+    window.alert(error.message);
+  }
+});
+
+importJsonButton.addEventListener("click", () => {
+  importJsonInput.click();
+});
+
+importJsonInput.addEventListener("change", () => {
+  void importProfileFromFile(importJsonInput.files?.[0]);
+});
+
+resetFormButton.addEventListener("click", () => {
+  fillEntryForm();
+});
+
+exportMonthInput.addEventListener("change", async () => {
+  const profile = getActiveProfile();
+  if (!profile) {
+    renderStats();
+    return;
+  }
+
+  profile.selectedMonth = getSelectedMonth();
+  renderStats();
+  renderJsonPreview();
+
+  try {
+    await saveActiveProfile();
+  } catch (error) {
+    console.error(error);
+  }
+});
+
+exportButton.addEventListener("click", async () => {
+  try {
+    await saveActiveProfile();
+  } catch (error) {
+    console.error(error);
+  }
+  downloadExcel();
+});
+
+void loadInitialState();
+window.setInterval(() => {
+  if (getTimer()) {
+    renderTimerPanel();
+  }
+}, 1000);
+
+signOutButton.addEventListener("click", async () => {
+  try {
+    await signOut();
+  } finally {
+    window.location.href = loginPageLink.href;
+  }
+});
