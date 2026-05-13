@@ -29,8 +29,18 @@ export default function handler(request, response) {
     ),
     appPath: pickFirstNonEmpty(process.env.APP_PATH, process.env.APPPATH, "/"),
   };
+  const authConfigDebug = {
+    hasSupabaseUrl: Boolean(authConfig.supabaseUrl),
+    hasSupabaseAnonKey: Boolean(authConfig.supabaseAnonKey),
+    hasApiBaseUrl: Boolean(authConfig.apiBaseUrl),
+    environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+  };
 
   response.setHeader("Content-Type", "application/javascript; charset=utf-8");
   response.setHeader("Cache-Control", "no-store");
-  response.status(200).send(`window.OT_AUTH = ${JSON.stringify(authConfig, null, 2)};\n`);
+  response
+    .status(200)
+    .send(
+      `window.OT_AUTH = ${JSON.stringify(authConfig, null, 2)};\nwindow.OT_AUTH_DEBUG = ${JSON.stringify(authConfigDebug, null, 2)};\n`,
+    );
 }
