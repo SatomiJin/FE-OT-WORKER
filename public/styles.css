@@ -491,6 +491,7 @@ textarea::placeholder {
 
 .time-picker {
   position: relative;
+  z-index: 50;
 }
 
 .time-picker-input {
@@ -501,13 +502,14 @@ textarea::placeholder {
   position: absolute;
   top: calc(100% + 10px);
   left: 0;
-  z-index: 20;
+  z-index: 9999;
   width: min(320px, 100%);
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: rgba(255, 252, 248, 0.98);
   box-shadow: var(--shadow-lg);
+  isolation: isolate;
 }
 
 .time-picker.time-picker--drop-up .time-picker-popover {
@@ -649,6 +651,8 @@ textarea::placeholder {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+  position: relative;
+  z-index: 5;
 }
 
 .note-field,
