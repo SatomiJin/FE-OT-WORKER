@@ -467,10 +467,40 @@ function closeTimePicker(root) {
   popover.hidden = true;
   input.setAttribute("aria-expanded", "false");
   root.classList.remove("is-open");
+  root.classList.remove("time-picker--drop-up");
+  popover.style.removeProperty("--time-picker-list-max-height");
 
   if (timePickerState.activeRoot === root) {
     timePickerState.activeRoot = null;
   }
+}
+
+function positionTimePicker(root) {
+  if (!root) {
+    return;
+  }
+
+  const input = root.querySelector(".time-picker-input");
+  const popover = root.querySelector("[data-time-popover]");
+  const viewportPadding = 16;
+  const gap = 10;
+
+  root.classList.remove("time-picker--drop-up");
+  popover.style.removeProperty("--time-picker-list-max-height");
+
+  const inputRect = input.getBoundingClientRect();
+  const estimatedPopoverHeight = Math.min(360, window.innerHeight - viewportPadding * 2);
+  const spaceBelow = window.innerHeight - inputRect.bottom - viewportPadding;
+  const spaceAbove = inputRect.top - viewportPadding;
+  const shouldDropUp = spaceBelow < estimatedPopoverHeight && spaceAbove > spaceBelow;
+  const availableSpace = Math.max(180, (shouldDropUp ? spaceAbove : spaceBelow) - gap);
+  const listMaxHeight = Math.max(120, Math.floor(availableSpace - 70));
+
+  if (shouldDropUp) {
+    root.classList.add("time-picker--drop-up");
+  }
+
+  popover.style.setProperty("--time-picker-list-max-height", `${listMaxHeight}px`);
 }
 
 function openTimePicker(root) {
@@ -488,6 +518,7 @@ function openTimePicker(root) {
   input.setAttribute("aria-expanded", "true");
   root.classList.add("is-open");
   timePickerState.activeRoot = root;
+  positionTimePicker(root);
   syncTimePicker(root);
   scrollSelectedOptionIntoView(root);
 }
@@ -575,6 +606,18 @@ function setupTimePickers() {
       closeTimePicker(timePickerState.activeRoot);
     }
   });
+
+  window.addEventListener("resize", () => {
+    if (timePickerState.activeRoot) {
+      positionTimePicker(timePickerState.activeRoot);
+    }
+  });
+
+  window.addEventListener("scroll", () => {
+    if (timePickerState.activeRoot) {
+      positionTimePicker(timePickerState.activeRoot);
+    }
+  }, { passive: true });
 
   syncAllTimePickers();
 }
@@ -1064,195 +1107,263 @@ function downloadJson() {
   triggerDownload(blob, `${profile.username}.ot.json`);
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;");
+const OT_EXPORT_SHEET_NAME = "Trang tính1";
+const OT_EXPORT_HEADERS = [
+  "DEMO",
+  "MSNV",
+  "Họ và tên",
+  "",
+  "Ngày ghi nhận OT",
+  "Thời gian vào ca",
+  "Thời gian ra ca",
+  "Tổng giờ OT",
+  "Giải trình (7,14,21,28)"
+];
+const OT_EXPORT_COLUMN_WIDTHS = [16.75, 16.75, 22.13, 22.13, 36.63, 16.75, 16.75, 16.75, 94.75];
+const OT_EXPORT_COLORS = {
+  headerText: "FF914D4F",
+  dateFill: "FFB7E1CD",
+  hoursText: "FF4A86E8",
+  border: "FF000000"
+};
+
+function createOtExportBorder() {
+  return {
+    top: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
+    right: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
+    bottom: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
+    left: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } }
+  };
 }
 
-function escapeXml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+function createOtExportHeaderStyle(overrides = {}) {
+  return {
+    font: {
+      bold: true,
+      color: { argb: OT_EXPORT_COLORS.headerText }
+    },
+    alignment: {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true
+    },
+    border: createOtExportBorder(),
+    ...overrides
+  };
 }
 
-function sanitizeSheetName(value) {
-  const sanitized = String(value ?? "Trang tinh1")
-    .replace(/[\\/*?:[\]]/g, " ")
-    .trim();
-
-  return (sanitized || "Trang tinh1").slice(0, 31);
+function createOtExportCellStyle(overrides = {}) {
+  return {
+    alignment: {
+      vertical: "middle"
+    },
+    border: createOtExportBorder(),
+    ...overrides
+  };
 }
 
-function toExcelDateTime(dateText, timeText = "00:00") {
-  const normalizedTime = normalizeTime24h(timeText);
-  if (!dateText || !normalizedTime) {
-    return "";
+function parseExcelCompatibleDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
   }
 
-  const date = new Date(`${dateText}T00:00:00`);
-  if (Number.isNaN(date.getTime())) {
-    return "";
+  const match = String(value ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
   }
 
-  const [hourText, minuteText] = normalizedTime.split(":");
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  date.setHours(hour === 24 ? 0 : hour, minute, 0, 0);
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, monthIndex, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
-  if (hour === 24) {
-    date.setDate(date.getDate() + 1);
+function parseExcelCompatibleTime(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return null;
   }
 
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00.000`;
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) {
+    return null;
+  }
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const second = Number(match[3] ?? "0");
+  const isMidnightBoundary = hour === 24 && minute === 0 && second === 0;
+  const isRegularTime =
+    hour >= 0 &&
+    hour <= 23 &&
+    minute >= 0 &&
+    minute <= 59 &&
+    second >= 0 &&
+    second <= 59;
+
+  if (!isMidnightBoundary && !isRegularTime) {
+    return null;
+  }
+
+  const totalSeconds = isMidnightBoundary ? 86400 : hour * 3600 + minute * 60 + second;
+  return totalSeconds / 86400;
 }
 
-function buildExcelMarkup(profile) {
-  const rows = sortEntries(filteredEntriesForMonth());
-  const sheetTitle = escapeXml(sanitizeSheetName(profile.employee.sheetName || "Trang tinh1"));
-  const fullName = escapeXml(profile.employee.fullName || profile.username);
-  const employeeCode = escapeXml(profile.employee.employeeCode || "");
-  const label = escapeXml(profile.employee.label || "DEMO");
+function normalizeOtExportRecord(record) {
+  const date = parseExcelCompatibleDate(record?.date);
+  const startTimeSerial = parseExcelCompatibleTime(record?.startTime);
+  const endTimeSerial = parseExcelCompatibleTime(record?.endTime);
+  const startTimeText = String(record?.startTime ?? "").trim();
+  const endTimeText = String(record?.endTime ?? "").trim();
 
-  const bodyRows = rows.map((entry) => `
-      <Row ss:AutoFitHeight="0" ss:Height="22.5">
-        <Cell><Data ss:Type="String">${label}</Data></Cell>
-        <Cell><Data ss:Type="String">${employeeCode}</Data></Cell>
-        <Cell><Data ss:Type="String">${fullName}</Data></Cell>
-        <Cell><Data ss:Type="String"></Data></Cell>
-        <Cell ss:StyleID="dateCell"><Data ss:Type="DateTime">${toExcelDateTime(entry.date)}</Data></Cell>
-        <Cell ss:StyleID="timeCell"><Data ss:Type="DateTime">${toExcelDateTime(entry.date, entry.startTime)}</Data></Cell>
-        <Cell ss:StyleID="timeCell"><Data ss:Type="DateTime">${toExcelDateTime(entry.date, entry.endTime)}</Data></Cell>
-        <Cell ss:StyleID="hoursCell" ss:Formula="=MOD(RC[-1]-RC[-2],1)*24"><Data ss:Type="Number">0</Data></Cell>
-        <Cell ss:StyleID="reasonCell"><Data ss:Type="String">${escapeXml(entry.note || "")}</Data></Cell>
-      </Row>`).join("");
+  if (!date || startTimeSerial === null || endTimeSerial === null) {
+    return null;
+  }
 
-  return `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:html="http://www.w3.org/TR/REC-html40">
-  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
-    <Author>OT Tracker</Author>
-    <Created>${new Date().toISOString()}</Created>
-  </DocumentProperties>
-  <ExcelWorkbook xmlns="urn:schemas-microsoft-com:office:excel">
-    <ProtectStructure>False</ProtectStructure>
-    <ProtectWindows>False</ProtectWindows>
-  </ExcelWorkbook>
-  <Styles>
-    <Style ss:ID="Default" ss:Name="Normal">
-      <Alignment ss:Vertical="Center"/>
-      <Borders/>
-      <Font ss:FontName="Arial" ss:Size="10"/>
-      <Interior/>
-      <NumberFormat/>
-      <Protection/>
-    </Style>
-    <Style ss:ID="headerBase">
-      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
-      <Borders>
-        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
-        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
-      </Borders>
-      <Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#914D4F"/>
-    </Style>
-    <Style ss:ID="headerDate" ss:Parent="headerBase">
-      <Interior ss:Color="#B7E1CD" ss:Pattern="Solid"/>
-    </Style>
-    <Style ss:ID="headerHours" ss:Parent="headerBase">
-      <Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#4A86E8"/>
-    </Style>
-    <Style ss:ID="dateCell">
-      <Alignment ss:Vertical="Center"/>
-      <Borders>
-        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
-        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
-      </Borders>
-      <Interior ss:Color="#B7E1CD" ss:Pattern="Solid"/>
-      <NumberFormat ss:Format="dd/mm/yyyy"/>
-    </Style>
-    <Style ss:ID="timeCell">
-      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
-      <Borders>
-        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
-        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
-      </Borders>
-      <NumberFormat ss:Format="hh:mm:ss"/>
-    </Style>
-    <Style ss:ID="hoursCell">
-      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
-      <Borders>
-        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
-        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
-      </Borders>
-      <Font ss:FontName="Arial" ss:Size="10" ss:Color="#4A86E8"/>
-      <NumberFormat ss:Format="0.##"/>
-    </Style>
-    <Style ss:ID="reasonCell">
-      <Alignment ss:Vertical="Center"/>
-      <Borders>
-        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
-        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
-      </Borders>
-    </Style>
-  </Styles>
-  <Worksheet ss:Name="${sheetTitle}">
-    <Table ss:ExpandedColumnCount="9" ss:ExpandedRowCount="${rows.length + 1}" x:FullColumns="1" x:FullRows="1" ss:DefaultRowHeight="18">
-      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
-      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
-      <Column ss:AutoFitWidth="0" ss:Width="116.25"/>
-      <Column ss:AutoFitWidth="0" ss:Width="116.25"/>
-      <Column ss:AutoFitWidth="0" ss:Width="189.75"/>
-      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
-      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
-      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
-      <Column ss:AutoFitWidth="0" ss:Width="483.75"/>
-      <Row ss:AutoFitHeight="0" ss:Height="28.5">
-        <Cell ss:StyleID="headerBase"><Data ss:Type="String">DEMO</Data></Cell>
-        <Cell ss:StyleID="headerBase"><Data ss:Type="String">MSNV</Data></Cell>
-        <Cell ss:StyleID="headerBase"><Data ss:Type="String">Họ và tên</Data></Cell>
-        <Cell ss:StyleID="headerBase"><Data ss:Type="String"></Data></Cell>
-        <Cell ss:StyleID="headerDate"><Data ss:Type="String">Ngày ghi nhận OT</Data></Cell>
-        <Cell ss:StyleID="headerBase"><Data ss:Type="String">Thời gian vào ca</Data></Cell>
-        <Cell ss:StyleID="headerBase"><Data ss:Type="String">Thời gian ra ca</Data></Cell>
-        <Cell ss:StyleID="headerHours"><Data ss:Type="String">Tổng giờ OT</Data></Cell>
-        <Cell ss:StyleID="headerBase"><Data ss:Type="String">Giải trình (7,14,21,28)</Data></Cell>
-      </Row>${bodyRows}
-    </Table>
-    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
-      <FreezePanes/>
-      <FrozenNoSplit/>
-      <SplitHorizontal>1</SplitHorizontal>
-      <TopRowBottomPane>1</TopRowBottomPane>
-      <ActivePane>2</ActivePane>
-      <Panes>
-        <Pane>
-          <Number>3</Number>
-        </Pane>
-      </Panes>
-      <ProtectObjects>False</ProtectObjects>
-      <ProtectScenarios>False</ProtectScenarios>
-    </WorksheetOptions>
-  </Worksheet>
-</Workbook>`;
+  return {
+    date,
+    startTimeSerial,
+    endTimeSerial,
+    startTimeText,
+    endTimeText,
+    totalHours: minutesBetween(
+      normalizeTime24h(startTimeText) ?? startTimeText,
+      normalizeTime24h(endTimeText) ?? endTimeText
+    ) / 60,
+    note: String(record?.note ?? "").trim()
+  };
 }
 
-function downloadExcel() {
+function createOtExportWorkbook(records, employee = {}) {
+  const workbook = new window.ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet(OT_EXPORT_SHEET_NAME, {
+    views: [{ state: "frozen", ySplit: 1 }]
+  });
+
+  setOtExportColumnWidths(worksheet);
+  writeOtExportHeader(worksheet);
+  writeOtExportRows(worksheet, records, employee);
+
+  return workbook;
+}
+
+function setOtExportColumnWidths(worksheet) {
+  worksheet.columns = OT_EXPORT_COLUMN_WIDTHS.map((width) => ({ width }));
+}
+
+function writeOtExportHeader(worksheet) {
+  const headerRow = worksheet.getRow(1);
+  OT_EXPORT_HEADERS.forEach((value, index) => {
+    headerRow.getCell(index + 1).value = value;
+  });
+
+  headerRow.height = 28;
+  applyOtExportHeaderStyles(headerRow);
+}
+
+function applyOtExportHeaderStyles(row) {
+  row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+    const headerStyle = createOtExportHeaderStyle();
+
+    if (columnNumber === 5) {
+      headerStyle.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: OT_EXPORT_COLORS.dateFill }
+      };
+    }
+
+    if (columnNumber === 8) {
+      headerStyle.font = {
+        bold: true,
+        color: { argb: OT_EXPORT_COLORS.hoursText }
+      };
+    }
+
+    cell.style = headerStyle;
+  });
+}
+
+function writeOtExportRows(worksheet, records, employee) {
+  const normalizedRecords = records
+    .map((record) => normalizeOtExportRecord(record))
+    .filter(Boolean);
+  const employeeLabel = String(employee.label ?? "DEMO").trim() || "DEMO";
+  const employeeCode = String(employee.employeeCode ?? "").trim();
+  const employeeName = String(employee.fullName ?? "").trim();
+
+  normalizedRecords.forEach((record, index) => {
+    const rowNumber = index + 2;
+    const row = worksheet.getRow(rowNumber);
+
+    row.getCell(1).value = employeeLabel;
+    row.getCell(2).value = employeeCode;
+    row.getCell(3).value = employeeName;
+    row.getCell(4).value = "";
+    row.getCell(5).value = record.date;
+    row.getCell(6).value = record.startTimeSerial;
+    row.getCell(7).value = record.endTimeSerial;
+    row.getCell(8).value = {
+      formula: `MOD(G${rowNumber}-F${rowNumber},1)*24`,
+      result: record.totalHours
+    };
+    row.getCell(9).value = record.note;
+
+    applyOtExportDataStyles(row);
+  });
+}
+
+function applyOtExportDataStyles(row) {
+  row.height = 22;
+
+  row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+    const isCentered = columnNumber >= 5 && columnNumber <= 8;
+    cell.style = createOtExportCellStyle({
+      alignment: {
+        horizontal: isCentered ? "center" : "left",
+        vertical: "middle"
+      }
+    });
+
+    if (columnNumber === 5) {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: OT_EXPORT_COLORS.dateFill }
+      };
+      cell.numFmt = "dd/MM/yyyy";
+    }
+
+    if (columnNumber === 6 || columnNumber === 7) {
+      cell.numFmt = "HH:mm:ss";
+    }
+
+    if (columnNumber === 8) {
+      cell.font = {
+        color: { argb: OT_EXPORT_COLORS.hoursText }
+      };
+      cell.numFmt = "0.##";
+    }
+  });
+}
+
+async function downloadExcel() {
   const profile = exportableProfile();
   const month = getSelectedMonth() || guessMonthForProfile(profile);
-  const markup = buildExcelMarkup(profile);
-  const blob = new Blob(["\ufeff", markup], {
-    type: "application/vnd.ms-excel;charset=utf-8"
-  });
-  triggerDownload(blob, `${profile.username}-${month}.xls`);
+
+  if (!window.ExcelJS?.Workbook) {
+    toast("Thiếu thư viện export .xlsx. Hãy tải lại trang rồi thử lại.", "error");
+    return;
+  }
+
+  const workbook = createOtExportWorkbook(filteredEntriesForMonth(), profile.employee);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob(
+    [buffer],
+    { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+  );
+  triggerDownload(blob, `${profile.username}-${month}.xlsx`);
 }
 
 async function openMyProfile(options = {}) {
@@ -1666,7 +1777,12 @@ exportButton.addEventListener("click", async () => {
   } catch (error) {
     console.error(error);
   }
-  downloadExcel();
+
+  try {
+    await downloadExcel();
+  } catch (error) {
+    toast(formatRequestError(error, "Không xuất được file Excel."), "error");
+  }
 });
 
 setupTimePickers();

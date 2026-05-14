@@ -510,6 +510,11 @@ textarea::placeholder {
   box-shadow: var(--shadow-lg);
 }
 
+.time-picker.time-picker--drop-up .time-picker-popover {
+  top: auto;
+  bottom: calc(100% + 10px);
+}
+
 [data-theme="dark"] .time-picker-popover {
   background: rgba(30, 24, 18, 0.98);
 }
@@ -536,7 +541,7 @@ textarea::placeholder {
 .time-picker-list {
   display: grid;
   gap: 6px;
-  max-height: 240px;
+  max-height: var(--time-picker-list-max-height, 240px);
   overflow-y: auto;
   padding-right: 4px;
 }
