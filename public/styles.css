@@ -402,6 +402,7 @@ button:active {
 
 /* ── Panel ── */
 .panel {
+  position: relative;
   padding: 26px;
   border-radius: var(--radius-xl);
   backdrop-filter: blur(16px);
@@ -409,6 +410,7 @@ button:active {
   border: 1px solid var(--panel-border);
   box-shadow: var(--shadow);
   transition: box-shadow var(--transition);
+  overflow: visible;
 }
 
 .panel:hover {
@@ -416,6 +418,10 @@ button:active {
 }
 .panel-wide {
   grid-column: 1 / -1;
+}
+
+.panel:has(.time-picker.is-open) {
+  z-index: 200;
 }
 
 .panel-head {
@@ -492,6 +498,10 @@ textarea::placeholder {
 .time-picker {
   position: relative;
   z-index: 50;
+}
+
+.time-picker.is-open {
+  z-index: 201;
 }
 
 .time-picker-input {
