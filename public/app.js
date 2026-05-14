@@ -573,19 +573,11 @@ function setupTimePickers() {
       const option = event.target.closest(".time-picker-option");
       if (option) {
         handleTimeOptionClick(option);
-        return;
-      }
-
-      if (event.target === input) {
-        if (root.classList.contains("is-open")) {
-          closeTimePicker(root);
-        } else {
-          openTimePicker(root);
-        }
       }
     });
 
-    input.addEventListener("focus", () => {
+    input.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
       openTimePicker(root);
     });
 
@@ -1237,6 +1229,8 @@ function normalizeOtExportRecord(record) {
 
 function createOtExportWorkbook(records, employee = {}) {
   const workbook = new window.ExcelJS.Workbook();
+  workbook.creator = "OT Tracker";
+  workbook.calcProperties.fullCalcOnLoad = true;
   const worksheet = workbook.addWorksheet(OT_EXPORT_SHEET_NAME, {
     views: [{ state: "frozen", ySplit: 1 }]
   });
@@ -1289,7 +1283,6 @@ function writeOtExportRows(worksheet, records, employee) {
   const normalizedRecords = records
     .map((record) => normalizeOtExportRecord(record))
     .filter(Boolean);
-  const employeeLabel = String(employee.label ?? "DEMO").trim() || "DEMO";
   const employeeCode = String(employee.employeeCode ?? "").trim();
   const employeeName = String(employee.fullName ?? "").trim();
 
@@ -1297,7 +1290,7 @@ function writeOtExportRows(worksheet, records, employee) {
     const rowNumber = index + 2;
     const row = worksheet.getRow(rowNumber);
 
-    row.getCell(1).value = employeeLabel;
+    row.getCell(1).value = "DEMO";
     row.getCell(2).value = employeeCode;
     row.getCell(3).value = employeeName;
     row.getCell(4).value = "";
