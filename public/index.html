@@ -161,11 +161,57 @@
           </label>
           <label>
             Bắt đầu
-            <input name="startTime" type="time" required />
+            <div class="time-picker" data-time-picker>
+              <input
+                name="startTime"
+                type="text"
+                class="time-picker-input"
+                placeholder="Chọn giờ"
+                readonly
+                required
+                aria-haspopup="dialog"
+                aria-expanded="false"
+              />
+              <div class="time-picker-popover" data-time-popover hidden>
+                <div class="time-picker-columns">
+                  <section class="time-picker-column">
+                    <p class="time-picker-title">Giờ</p>
+                    <div class="time-picker-list" data-time-list="hour"></div>
+                  </section>
+                  <section class="time-picker-column">
+                    <p class="time-picker-title">Phút</p>
+                    <div class="time-picker-list" data-time-list="minute"></div>
+                  </section>
+                </div>
+              </div>
+            </div>
           </label>
           <label>
             Kết thúc
-            <input name="endTime" type="time" required />
+            <div class="time-picker" data-time-picker>
+              <input
+                name="endTime"
+                type="text"
+                class="time-picker-input"
+                placeholder="Chọn giờ"
+                readonly
+                required
+                aria-haspopup="dialog"
+                aria-expanded="false"
+              />
+              <div class="time-picker-popover" data-time-popover hidden>
+                <div class="time-picker-columns">
+                  <section class="time-picker-column">
+                    <p class="time-picker-title">Giờ</p>
+                    <div class="time-picker-list" data-time-list="hour"></div>
+                  </section>
+                  <section class="time-picker-column">
+                    <p class="time-picker-title">Phút</p>
+                    <div class="time-picker-list" data-time-list="minute"></div>
+                  </section>
+                </div>
+              </div>
+            </div>
           </label>
           <label class="note-field">
             Giải trình

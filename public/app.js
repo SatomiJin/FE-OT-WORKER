@@ -108,6 +108,10 @@ const entryFields = {
   endTime: entryForm.elements.namedItem("endTime"),
   note: entryForm.elements.namedItem("note")
 };
+const timePickerRoots = Array.from(document.querySelectorAll("[data-time-picker]"));
+const timePickerState = {
+  activeRoot: null
+};
 
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -391,10 +395,188 @@ function fillEntryForm(entry = null) {
   entryFields.date.value = entry?.date ?? "";
   const start = normalizeTime24h(entry?.startTime ?? "") ?? "";
   const end = normalizeTime24h(entry?.endTime ?? "") ?? "";
-  // type="time" không nhận "24:00", dùng "00:00" thay thế
-  entryFields.startTime.value = start === "24:00" ? "00:00" : start;
-  entryFields.endTime.value = end === "24:00" ? "00:00" : end;
+  entryFields.startTime.value = start;
+  entryFields.endTime.value = end;
   entryFields.note.value = entry?.note ?? "";
+  syncAllTimePickers();
+}
+
+function getTimeParts(timeText) {
+  const normalized = normalizeTime24h(timeText);
+  if (!normalized) {
+    return null;
+  }
+
+  const [hourText, minuteText] = normalized.split(":");
+  return {
+    hour: Number(hourText),
+    minute: Number(minuteText)
+  };
+}
+
+function buildTimeOption(value, label, part) {
+  const option = document.createElement("button");
+  option.type = "button";
+  option.className = "time-picker-option";
+  option.dataset.value = String(value);
+  option.dataset.part = part;
+  option.textContent = label;
+  return option;
+}
+
+function syncTimePicker(root) {
+  if (!root) {
+    return;
+  }
+
+  const input = root.querySelector(".time-picker-input");
+  const parts = getTimeParts(input.value);
+  const selectedHour = parts?.hour ?? null;
+  const selectedMinute = parts?.minute ?? null;
+
+  root.querySelectorAll(".time-picker-option").forEach((option) => {
+    const optionValue = Number(option.dataset.value);
+    const isHourOption = option.dataset.part === "hour";
+    const selected = isHourOption ? optionValue === selectedHour : optionValue === selectedMinute;
+    const disabled = !isHourOption && selectedHour === 24 && optionValue !== 0;
+    option.classList.toggle("is-selected", selected);
+    option.classList.toggle("is-disabled", disabled);
+    option.disabled = disabled;
+  });
+}
+
+function syncAllTimePickers() {
+  timePickerRoots.forEach((root) => syncTimePicker(root));
+}
+
+function scrollSelectedOptionIntoView(root) {
+  root.querySelectorAll(".time-picker-option.is-selected").forEach((option) => {
+    option.scrollIntoView({
+      block: "nearest"
+    });
+  });
+}
+
+function closeTimePicker(root) {
+  if (!root) {
+    return;
+  }
+
+  const popover = root.querySelector("[data-time-popover]");
+  const input = root.querySelector(".time-picker-input");
+  popover.hidden = true;
+  input.setAttribute("aria-expanded", "false");
+  root.classList.remove("is-open");
+
+  if (timePickerState.activeRoot === root) {
+    timePickerState.activeRoot = null;
+  }
+}
+
+function openTimePicker(root) {
+  if (!root) {
+    return;
+  }
+
+  if (timePickerState.activeRoot && timePickerState.activeRoot !== root) {
+    closeTimePicker(timePickerState.activeRoot);
+  }
+
+  const popover = root.querySelector("[data-time-popover]");
+  const input = root.querySelector(".time-picker-input");
+  popover.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+  root.classList.add("is-open");
+  timePickerState.activeRoot = root;
+  syncTimePicker(root);
+  scrollSelectedOptionIntoView(root);
+}
+
+function updateTimeInputValue(input, hour, minute) {
+  const safeMinute = hour === 24 ? 0 : minute;
+  input.value = `${pad(hour)}:${pad(safeMinute)}`;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function handleTimeOptionClick(option) {
+  const root = option.closest("[data-time-picker]");
+  const input = root.querySelector(".time-picker-input");
+  const currentParts = getTimeParts(input.value) ?? { hour: 0, minute: 0 };
+  const nextValue = Number(option.dataset.value);
+
+  if (option.dataset.part === "hour") {
+    updateTimeInputValue(input, nextValue, nextValue === 24 ? 0 : currentParts.minute);
+    syncTimePicker(root);
+    scrollSelectedOptionIntoView(root);
+    if (nextValue === 24) {
+      closeTimePicker(root);
+    }
+    return;
+  }
+
+  if (currentParts.hour === 24 && nextValue !== 0) {
+    return;
+  }
+
+  updateTimeInputValue(input, currentParts.hour, nextValue);
+  syncTimePicker(root);
+  closeTimePicker(root);
+}
+
+function setupTimePickers() {
+  timePickerRoots.forEach((root) => {
+    const input = root.querySelector(".time-picker-input");
+    const hourList = root.querySelector('[data-time-list="hour"]');
+    const minuteList = root.querySelector('[data-time-list="minute"]');
+
+    for (let hour = 0; hour <= 24; hour += 1) {
+      hourList.append(buildTimeOption(hour, pad(hour), "hour"));
+    }
+
+    for (let minute = 0; minute <= 59; minute += 1) {
+      minuteList.append(buildTimeOption(minute, pad(minute), "minute"));
+    }
+
+    root.addEventListener("click", (event) => {
+      const option = event.target.closest(".time-picker-option");
+      if (option) {
+        handleTimeOptionClick(option);
+        return;
+      }
+
+      if (event.target === input) {
+        if (root.classList.contains("is-open")) {
+          closeTimePicker(root);
+        } else {
+          openTimePicker(root);
+        }
+      }
+    });
+
+    input.addEventListener("focus", () => {
+      openTimePicker(root);
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+        event.preventDefault();
+        openTimePicker(root);
+      }
+
+      if (event.key === "Escape") {
+        closeTimePicker(root);
+      }
+    });
+  });
+
+  document.addEventListener("click", (event) => {
+    if (timePickerState.activeRoot && !timePickerState.activeRoot.contains(event.target)) {
+      closeTimePicker(timePickerState.activeRoot);
+    }
+  });
+
+  syncAllTimePickers();
 }
 
 function syncStateFromEmployeeForm() {
@@ -890,98 +1072,183 @@ function escapeHtml(value) {
     .replace(/\"/g, "&quot;");
 }
 
-function buildExcelMarkup(profile, month) {
+function escapeXml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function sanitizeSheetName(value) {
+  const sanitized = String(value ?? "Trang tinh1")
+    .replace(/[\\/*?:[\]]/g, " ")
+    .trim();
+
+  return (sanitized || "Trang tinh1").slice(0, 31);
+}
+
+function toExcelDateTime(dateText, timeText = "00:00") {
+  const normalizedTime = normalizeTime24h(timeText);
+  if (!dateText || !normalizedTime) {
+    return "";
+  }
+
+  const date = new Date(`${dateText}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const [hourText, minuteText] = normalizedTime.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  date.setHours(hour === 24 ? 0 : hour, minute, 0, 0);
+
+  if (hour === 24) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00.000`;
+}
+
+function buildExcelMarkup(profile) {
   const rows = sortEntries(filteredEntriesForMonth());
-  const sheetTitle = escapeHtml(profile.employee.sheetName || "Trang tinh 1");
-  const fullName = escapeHtml(profile.employee.fullName || profile.username);
-  const employeeCode = escapeHtml(profile.employee.employeeCode || "");
-  const label = escapeHtml(profile.employee.label || "DEMO");
-  const monthLabel = escapeHtml(month || guessMonthForProfile(profile));
+  const sheetTitle = escapeXml(sanitizeSheetName(profile.employee.sheetName || "Trang tinh1"));
+  const fullName = escapeXml(profile.employee.fullName || profile.username);
+  const employeeCode = escapeXml(profile.employee.employeeCode || "");
+  const label = escapeXml(profile.employee.label || "DEMO");
 
-  const bodyRows = rows.length > 0
-    ? rows.map((entry) => `
-      <tr>
-        <td>${label}</td>
-        <td>${employeeCode}</td>
-        <td>${fullName}</td>
-        <td>${escapeHtml(entry.date)}</td>
-        <td>${escapeHtml(entry.startTime)}</td>
-        <td>${escapeHtml(entry.endTime)}</td>
-        <td>${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</td>
-        <td>${escapeHtml(entry.note || "")}</td>
-      </tr>
-    `).join("")
-    : `
-      <tr>
-        <td>${label}</td>
-        <td>${employeeCode}</td>
-        <td>${fullName}</td>
-        <td>${escapeHtml(monthLabel)}-01</td>
-        <td>18:00</td>
-        <td>20:00</td>
-        <td>2h</td>
-        <td>Chua co du lieu OT trong thang nay</td>
-      </tr>
-    `;
+  const bodyRows = rows.map((entry) => `
+      <Row ss:AutoFitHeight="0" ss:Height="22.5">
+        <Cell><Data ss:Type="String">${label}</Data></Cell>
+        <Cell><Data ss:Type="String">${employeeCode}</Data></Cell>
+        <Cell><Data ss:Type="String">${fullName}</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+        <Cell ss:StyleID="dateCell"><Data ss:Type="DateTime">${toExcelDateTime(entry.date)}</Data></Cell>
+        <Cell ss:StyleID="timeCell"><Data ss:Type="DateTime">${toExcelDateTime(entry.date, entry.startTime)}</Data></Cell>
+        <Cell ss:StyleID="timeCell"><Data ss:Type="DateTime">${toExcelDateTime(entry.date, entry.endTime)}</Data></Cell>
+        <Cell ss:StyleID="hoursCell" ss:Formula="=MOD(RC[-1]-RC[-2],1)*24"><Data ss:Type="Number">0</Data></Cell>
+        <Cell ss:StyleID="reasonCell"><Data ss:Type="String">${escapeXml(entry.note || "")}</Data></Cell>
+      </Row>`).join("");
 
-  return `<!DOCTYPE html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office"
-      xmlns:x="urn:schemas-microsoft-com:office:excel"
-      xmlns="http://www.w3.org/TR/REC-html40">
-  <head>
-    <meta charset="UTF-8">
-    <!--[if gte mso 9]>
-    <xml>
-      <x:ExcelWorkbook>
-        <x:ExcelWorksheets>
-          <x:ExcelWorksheet>
-            <x:Name>${sheetTitle}</x:Name>
-            <x:WorksheetOptions>
-              <x:FreezePanes/>
-              <x:FrozenNoSplit/>
-              <x:SplitHorizontal>1</x:SplitHorizontal>
-              <x:TopRowBottomPane>1</x:TopRowBottomPane>
-              <x:ActivePane>2</x:ActivePane>
-            </x:WorksheetOptions>
-          </x:ExcelWorksheet>
-        </x:ExcelWorksheets>
-      </x:ExcelWorkbook>
-    </xml>
-    <![endif]-->
-    <style>
-      body { font-family: Arial, sans-serif; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid #9fb79a; padding: 8px; vertical-align: top; }
-      th { background: #d9ead3; font-weight: 700; }
-      .meta { margin-bottom: 10px; }
-    </style>
-  </head>
-  <body>
-    <div class="meta">OT thang ${monthLabel} - ${fullName}</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Ky hieu</th>
-          <th>MSNV</th>
-          <th>Ho va ten</th>
-          <th>Ngay ghi nhan OT</th>
-          <th>Thoi gian vao ca</th>
-          <th>Thoi gian ra ca</th>
-          <th>Tong gio OT</th>
-          <th>Giai trinh</th>
-        </tr>
-      </thead>
-      <tbody>${bodyRows}
-      </tbody>
-    </table>
-  </body>
-</html>`;
+  return `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+  <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+    <Author>OT Tracker</Author>
+    <Created>${new Date().toISOString()}</Created>
+  </DocumentProperties>
+  <ExcelWorkbook xmlns="urn:schemas-microsoft-com:office:excel">
+    <ProtectStructure>False</ProtectStructure>
+    <ProtectWindows>False</ProtectWindows>
+  </ExcelWorkbook>
+  <Styles>
+    <Style ss:ID="Default" ss:Name="Normal">
+      <Alignment ss:Vertical="Center"/>
+      <Borders/>
+      <Font ss:FontName="Arial" ss:Size="10"/>
+      <Interior/>
+      <NumberFormat/>
+      <Protection/>
+    </Style>
+    <Style ss:ID="headerBase">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+      <Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#914D4F"/>
+    </Style>
+    <Style ss:ID="headerDate" ss:Parent="headerBase">
+      <Interior ss:Color="#B7E1CD" ss:Pattern="Solid"/>
+    </Style>
+    <Style ss:ID="headerHours" ss:Parent="headerBase">
+      <Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#4A86E8"/>
+    </Style>
+    <Style ss:ID="dateCell">
+      <Alignment ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+      <Interior ss:Color="#B7E1CD" ss:Pattern="Solid"/>
+      <NumberFormat ss:Format="dd/mm/yyyy"/>
+    </Style>
+    <Style ss:ID="timeCell">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+      <NumberFormat ss:Format="hh:mm:ss"/>
+    </Style>
+    <Style ss:ID="hoursCell">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+      <Font ss:FontName="Arial" ss:Size="10" ss:Color="#4A86E8"/>
+      <NumberFormat ss:Format="0.##"/>
+    </Style>
+    <Style ss:ID="reasonCell">
+      <Alignment ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+      </Borders>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="${sheetTitle}">
+    <Table ss:ExpandedColumnCount="9" ss:ExpandedRowCount="${rows.length + 1}" x:FullColumns="1" x:FullRows="1" ss:DefaultRowHeight="18">
+      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
+      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
+      <Column ss:AutoFitWidth="0" ss:Width="116.25"/>
+      <Column ss:AutoFitWidth="0" ss:Width="116.25"/>
+      <Column ss:AutoFitWidth="0" ss:Width="189.75"/>
+      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
+      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
+      <Column ss:AutoFitWidth="0" ss:Width="88.5"/>
+      <Column ss:AutoFitWidth="0" ss:Width="483.75"/>
+      <Row ss:AutoFitHeight="0" ss:Height="28.5">
+        <Cell ss:StyleID="headerBase"><Data ss:Type="String">DEMO</Data></Cell>
+        <Cell ss:StyleID="headerBase"><Data ss:Type="String">MSNV</Data></Cell>
+        <Cell ss:StyleID="headerBase"><Data ss:Type="String">Họ và tên</Data></Cell>
+        <Cell ss:StyleID="headerBase"><Data ss:Type="String"></Data></Cell>
+        <Cell ss:StyleID="headerDate"><Data ss:Type="String">Ngày ghi nhận OT</Data></Cell>
+        <Cell ss:StyleID="headerBase"><Data ss:Type="String">Thời gian vào ca</Data></Cell>
+        <Cell ss:StyleID="headerBase"><Data ss:Type="String">Thời gian ra ca</Data></Cell>
+        <Cell ss:StyleID="headerHours"><Data ss:Type="String">Tổng giờ OT</Data></Cell>
+        <Cell ss:StyleID="headerBase"><Data ss:Type="String">Giải trình (7,14,21,28)</Data></Cell>
+      </Row>${bodyRows}
+    </Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <FreezePanes/>
+      <FrozenNoSplit/>
+      <SplitHorizontal>1</SplitHorizontal>
+      <TopRowBottomPane>1</TopRowBottomPane>
+      <ActivePane>2</ActivePane>
+      <Panes>
+        <Pane>
+          <Number>3</Number>
+        </Pane>
+      </Panes>
+      <ProtectObjects>False</ProtectObjects>
+      <ProtectScenarios>False</ProtectScenarios>
+    </WorksheetOptions>
+  </Worksheet>
+</Workbook>`;
 }
 
 function downloadExcel() {
   const profile = exportableProfile();
   const month = getSelectedMonth() || guessMonthForProfile(profile);
-  const markup = buildExcelMarkup(profile, month);
+  const markup = buildExcelMarkup(profile);
   const blob = new Blob(["\ufeff", markup], {
     type: "application/vnd.ms-excel;charset=utf-8"
   });
@@ -1402,6 +1669,7 @@ exportButton.addEventListener("click", async () => {
   downloadExcel();
 });
 
+setupTimePickers();
 void loadInitialState();
 window.setInterval(() => {
   if (getTimer()) {
