@@ -8,6 +8,27 @@ import {
   signOut
 } from "./auth.js";
 
+function toast(message, type = "info") {
+  const backgrounds = {
+    success: "linear-gradient(135deg, #2e7d32, #43a047)",
+    error: "linear-gradient(135deg, #c62828, #e53935)",
+    info: "linear-gradient(135deg, #1565c0, #1e88e5)",
+    warning: "linear-gradient(135deg, #e65100, #fb8c00)"
+  };
+  Toastify({
+    text: message,
+    duration: type === "error" ? 5000 : 3000,
+    gravity: "top",
+    position: "right",
+    stopOnFocus: true,
+    style: { background: backgrounds[type] ?? backgrounds.info }
+  }).showToast();
+}
+
+function toastConfirm(message) {
+  return window.confirm(message);
+}
+
 const API_BASE_URL = getAuthConfig().apiBaseUrl;
 const APP_LOG_PREFIX = "[OT App]";
 const API_LOG_PREFIX = "[OT API]";
@@ -972,13 +993,16 @@ async function openMyProfile(options = {}) {
     const profile = await fetchMyProfileFromApi();
     mergeProfile(profile);
     setActiveUsername(profile.username);
+    if (!options.silent) {
+      toast(`Đã tải hồ sơ "${profile.username}" thành công.`, "success");
+    }
     return true;
   } catch (error) {
     if (!options.silent) {
       if (error.status === 404) {
-        window.alert("Account dang nhap hien tai chua co ho so tren backend. Hay bam \"Tao ho so moi\" neu can.");
+        toast("Account đăng nhập hiện tại chưa có hồ sơ trên backend. Hãy bấm \"Tạo hồ sơ mới\" nếu cần.", "warning");
       } else {
-        window.alert(error.message);
+        toast(error.message, "error");
       }
     }
     return false;
@@ -988,7 +1012,7 @@ async function openMyProfile(options = {}) {
 async function createProfile(username) {
   const normalized = slugifyUsername(username) || state.suggestedUsername;
   if (!normalized) {
-    window.alert("Nhap username truoc khi tao ho so.");
+    toast("Nhập username trước khi tạo hồ sơ.", "warning");
     return false;
   }
 
@@ -996,13 +1020,14 @@ async function createProfile(username) {
     const profile = await createProfileInApi(normalized);
     mergeProfile(profile);
     setActiveUsername(profile.username);
+    toast(`Đã tạo hồ sơ "${profile.username}" thành công.`, "success");
     return true;
   } catch (error) {
     if (error.status === 409) {
       return openMyProfile();
     }
 
-    window.alert(error.message);
+    toast(error.message, "error");
     return false;
   }
 }
@@ -1093,10 +1118,12 @@ async function importProfileFromFile(file) {
       await openMyProfile({ silent: true });
 
       if (profile.activeTimer) {
-        window.alert("Da import profile va entries. Active timer trong file JSON khong duoc phuc hoi vi backend tu quan ly thoi diem start/stop.");
+        toast("Đã import profile và entries. Active timer trong file JSON không được phục hồi vì backend tự quản lý thời điểm start/stop.", "warning");
+      } else {
+        toast("Import JSON thành công.", "success");
       }
     } catch (error) {
-      window.alert(`Khong doc duoc file JSON: ${error instanceof Error ? error.message : String(error)}`);
+      toast(`Không đọc được file JSON: ${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       importJsonInput.value = "";
     }
@@ -1109,8 +1136,9 @@ async function startTimerForActiveProfile() {
     const profile = requireActiveProfile("bat dau OT");
     profile.activeTimer = await startTimerInApi(profile.username, timerNoteInput.value.trim());
     renderAll();
+    toast("Đã bắt đầu bấm giờ OT.", "success");
   } catch (error) {
-    window.alert(formatRequestError(error, "Khong bat dau duoc timer."));
+    toast(formatRequestError(error, "Không bắt đầu được timer."), "error");
   }
 }
 
@@ -1119,15 +1147,16 @@ async function stopTimerForActiveProfile() {
     const profile = requireActiveProfile("dung va luu OT");
     const timer = getTimer(profile);
     if (!timer) {
-      window.alert("Chua co timer dang chay de dung.");
+      toast("Chưa có timer đang chạy để dừng.", "warning");
       return;
     }
 
     await stopTimerInApi(profile.username, timerNoteInput.value.trim());
     await openMyProfile({ silent: true });
     fillEntryForm();
+    toast("Đã dừng timer và lưu dòng OT mới.", "success");
   } catch (error) {
-    window.alert(formatRequestError(error, "Khong dung duoc timer."));
+    toast(formatRequestError(error, "Không dừng được timer."), "error");
   }
 }
 
@@ -1216,7 +1245,7 @@ entryForm.addEventListener("submit", async (event) => {
   const normalizedEndTime = entryFields.endTime.value || null;
 
   if (!normalizedStartTime || !normalizedEndTime) {
-    window.alert("Vui lòng chọn giờ bắt đầu và kết thúc.");
+    toast("Vui lòng chọn giờ bắt đầu và kết thúc.", "warning");
     return;
   }
 
@@ -1236,14 +1265,16 @@ entryForm.addEventListener("submit", async (event) => {
     const profile = requireActiveProfile("luu dong OT");
     if (entry.id) {
       await updateEntryInApi(profile.username, entry.id, entry);
+      toast("Đã cập nhật dòng OT thành công.", "success");
     } else {
       await createEntryInApi(profile.username, entry);
+      toast("Đã thêm dòng OT mới thành công.", "success");
     }
 
     await openMyProfile({ silent: true });
     fillEntryForm();
   } catch (error) {
-    window.alert(formatRequestError(error, "Khong luu duoc dong OT."));
+    toast(formatRequestError(error, "Không lưu được dòng OT."), "error");
   }
 });
 
@@ -1270,15 +1301,20 @@ entryTableBody.addEventListener("click", async (event) => {
       const profile = requireActiveProfile("xoa dong OT");
       const entry = profile.entries.find((item) => item.id === button.dataset.id);
       if (!entry) {
-        window.alert("Khong tim thay dong OT can xoa trong du lieu hien tai.");
+        toast("Không tìm thấy dòng OT cần xóa trong dữ liệu hiện tại.", "error");
+        return;
+      }
+
+      if (!toastConfirm(`Xóa dòng OT ngày ${entry.date} (${entry.startTime} – ${entry.endTime})?`)) {
         return;
       }
 
       await deleteEntryInApi(profile.username, entry.id);
       await openMyProfile({ silent: true });
       fillEntryForm();
+      toast("Đã xóa dòng OT thành công.", "success");
     } catch (error) {
-      window.alert(formatRequestError(error, "Khong xoa duoc dong OT."));
+      toast(formatRequestError(error, "Không xóa được dòng OT."), "error");
     }
   }
 });
@@ -1314,15 +1350,16 @@ deleteProfileButton.addEventListener("click", async () => {
     return;
   }
 
-  const confirmed = window.confirm(`Xoa ho so "${profile.username}" tren backend?`);
+  const confirmed = toastConfirm(`Xóa hồ sơ "${profile.username}" trên backend?`);
   if (!confirmed) {
     return;
   }
 
   try {
     await deleteProfile(profile.username);
+    toast(`Đã xóa hồ sơ "${profile.username}" thành công.`, "success");
   } catch (error) {
-    window.alert(error.message);
+    toast(error.message, "error");
   }
 });
 

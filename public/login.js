@@ -12,6 +12,23 @@ import {
 } from "./auth.js";
 
 const LOGIN_LOG_PREFIX = "[OT Login]";
+
+function toast(message, type = "info") {
+  const backgrounds = {
+    success: "linear-gradient(135deg, #2e7d32, #43a047)",
+    error: "linear-gradient(135deg, #c62828, #e53935)",
+    info: "linear-gradient(135deg, #1565c0, #1e88e5)",
+    warning: "linear-gradient(135deg, #e65100, #fb8c00)"
+  };
+  Toastify({
+    text: message,
+    duration: type === "error" ? 5000 : 3000,
+    gravity: "top",
+    position: "right",
+    stopOnFocus: true,
+    style: { background: backgrounds[type] ?? backgrounds.info }
+  }).showToast();
+}
 const loginButton = document.querySelector("#loginButton");
 const continueButton = document.querySelector("#continueButton");
 const signOutButton = document.querySelector("#signOutButton");
@@ -156,6 +173,7 @@ function renderSignedIn(session) {
   authMeta.textContent = user.email || "";
 
   setMessage("Đăng nhập Google thành công. Đang chuyển vào trang chính...");
+  toast(`Chào mừng, ${user.displayName || user.email}! Đăng nhập thành công.`, "success");
   window.clearTimeout(redirectHandle);
   redirectHandle = window.setTimeout(() => {
     logLogin("Redirecting to app", { appUrl: getAuthConfig().appUrl });
@@ -202,7 +220,9 @@ loginButton.addEventListener("click", async () => {
   } catch (error) {
     renderSignedOut();
     console.error(`${LOGIN_LOG_PREFIX} Login button flow failed`, error);
-    setMessage(error instanceof Error ? error.message : String(error), true);
+    const msg = error instanceof Error ? error.message : String(error);
+    setMessage(msg, true);
+    toast(msg, "error");
   }
 });
 
@@ -219,11 +239,14 @@ signOutButton.addEventListener("click", async () => {
     await signOut();
     renderSignedOut();
     setMessage("Đã đăng xuất thành công.");
+    toast("Đã đăng xuất thành công.", "info");
   } catch (error) {
     signOutButton.disabled = false;
     signOutButton.textContent = "Đăng xuất";
     console.error(`${LOGIN_LOG_PREFIX} Sign out failed`, error);
-    setMessage(error instanceof Error ? error.message : String(error), true);
+    const msg = error instanceof Error ? error.message : String(error);
+    setMessage(msg, true);
+    toast(msg, "error");
   }
 });
 
