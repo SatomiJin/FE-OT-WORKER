@@ -155,6 +155,12 @@
         </section>
         <form id="entryForm" class="entry-form">
           <input type="hidden" name="id" />
+          <div class="entry-form-overlay" id="entryFormOverlay" hidden aria-hidden="true">
+            <div class="loading-badge">
+              <span class="loading-spinner" aria-hidden="true"></span>
+              <span id="entryFormOverlayText">Đang lưu dòng OT...</span>
+            </div>
+          </div>
           <label>
             Ngày
             <input name="date" type="date" required />

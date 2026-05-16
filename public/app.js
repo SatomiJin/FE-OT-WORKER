@@ -60,13 +60,20 @@ const state = {
   activeUsername: "",
   profiles: {},
   profileSaveHandle: 0,
-  timerNoteSaveHandle: 0
+  timerNoteSaveHandle: 0,
+  loading: {
+    savingEntry: false,
+    deletingEntryIds: new Set(),
+    deletingProfileUsername: ""
+  }
 };
 
 const profileForm = document.querySelector("#profileForm");
 const usernameInput = document.querySelector("#usernameInput");
 const employeeForm = document.querySelector("#employeeForm");
 const entryForm = document.querySelector("#entryForm");
+const entryFormOverlay = document.querySelector("#entryFormOverlay");
+const entryFormOverlayText = document.querySelector("#entryFormOverlayText");
 const exportMonthInput = document.querySelector("#exportMonth");
 const profileList = document.querySelector("#profileList");
 const entryTableBody = document.querySelector("#entryTableBody");
@@ -112,6 +119,15 @@ const timePickerRoots = Array.from(document.querySelectorAll("[data-time-picker]
 const timePickerState = {
   activeRoot: null
 };
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -214,6 +230,51 @@ function removeProfileFromState(username) {
 
 function getActiveProfile() {
   return state.profiles[state.activeUsername];
+}
+
+function isSavingEntry() {
+  return state.loading.savingEntry;
+}
+
+function isDeletingEntry(entryId) {
+  return state.loading.deletingEntryIds.has(String(entryId ?? "").trim());
+}
+
+function isDeletingProfile(username) {
+  return slugifyUsername(username) !== "" && state.loading.deletingProfileUsername === slugifyUsername(username);
+}
+
+function setSavingEntry(isLoading, label = "Đang lưu dòng OT...") {
+  state.loading.savingEntry = Boolean(isLoading);
+  if (entryFormOverlay) {
+    entryFormOverlay.hidden = !state.loading.savingEntry;
+  }
+  if (entryFormOverlayText) {
+    entryFormOverlayText.textContent = label;
+  }
+  renderEntryFormState();
+}
+
+function setDeletingEntry(entryId, isLoading) {
+  const normalizedId = String(entryId ?? "").trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  if (isLoading) {
+    state.loading.deletingEntryIds.add(normalizedId);
+  } else {
+    state.loading.deletingEntryIds.delete(normalizedId);
+  }
+
+  renderTable();
+}
+
+function setDeletingProfile(username, isLoading) {
+  state.loading.deletingProfileUsername = isLoading ? slugifyUsername(username) : "";
+  renderProfileList();
+  renderProfileMeta();
+  renderProfileActions();
 }
 
 function requireActiveProfile(actionLabel = "thuc hien thao tac nay") {
@@ -1039,8 +1100,36 @@ function renderProfileList() {
   button.type = "button";
   button.className = "profile-chip profile-chip-active";
   button.dataset.username = profile.username;
-  button.textContent = profile.username;
+  if (isDeletingProfile(profile.username)) {
+    button.classList.add("is-loading");
+    button.disabled = true;
+    button.innerHTML = `
+      <span class="profile-chip-status">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <span>Đang xóa ${escapeHtml(profile.username)}</span>
+      </span>
+    `;
+  } else {
+    button.textContent = profile.username;
+  }
   profileList.append(button);
+}
+
+function renderProfileActions() {
+  const profile = getActiveProfile();
+  const isProfileDeleting = isDeletingProfile(profile?.username);
+  deleteProfileButton.disabled = !profile || isProfileDeleting;
+  createProfileButton.disabled = isProfileDeleting;
+
+  if (isProfileDeleting) {
+    deleteProfileButton.innerHTML = `
+      <span class="loading-spinner" aria-hidden="true"></span>
+      <span>Đang xóa hồ sơ...</span>
+    `;
+    return;
+  }
+
+  deleteProfileButton.textContent = "Xóa hồ sơ";
 }
 
 function renderStats() {
@@ -1096,6 +1185,32 @@ function renderTimerPanel() {
   }
 }
 
+function renderEntryFormState() {
+  const isBusy = isSavingEntry();
+  entryForm.classList.toggle("is-busy", isBusy);
+  entryFields.date.disabled = isBusy;
+  entryFields.note.disabled = isBusy;
+  entryFields.startTime.disabled = isBusy;
+  entryFields.endTime.disabled = isBusy;
+  resetFormButton.disabled = isBusy;
+
+  const submitButton = entryForm.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = isBusy;
+    submitButton.innerHTML = isBusy
+      ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang lưu dòng OT...</span>'
+      : "Lưu dòng OT";
+  }
+
+  timePickerRoots.forEach((root) => {
+    root.classList.toggle("is-disabled", isBusy);
+  });
+
+  if (isBusy) {
+    closeAllTimePickers();
+  }
+}
+
 function renderTable() {
   const rows = sortEntries(filteredEntriesForMonth());
 
@@ -1109,17 +1224,28 @@ function renderTable() {
   }
 
   rows.forEach((entry) => {
+    const isRowDeleting = isDeletingEntry(entry.id);
     const tr = document.createElement("tr");
+    tr.classList.toggle("is-loading", isRowDeleting);
     tr.innerHTML = `
-      <td>${entry.date}</td>
+      <td>
+        <span class="row-status">
+          ${isRowDeleting ? '<span class="loading-spinner" aria-hidden="true"></span>' : ""}
+          <span>${escapeHtml(entry.date)}</span>
+        </span>
+      </td>
       <td>${entry.startTime}</td>
       <td>${entry.endTime}</td>
       <td><span class="hours-badge">${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</span></td>
-      <td>${entry.note || ""}</td>
+      <td>${escapeHtml(entry.note || "")}</td>
       <td>
         <div class="row-actions">
-          <button class="edit" data-id="${entry.id}" type="button">Sua</button>
-          <button class="delete" data-id="${entry.id}" type="button">Xoa</button>
+          <button class="edit" data-id="${entry.id}" type="button" ${isRowDeleting ? "disabled" : ""}>
+            <span class="row-action-label">✎ Sửa</span>
+          </button>
+          <button class="delete" data-id="${entry.id}" type="button" ${isRowDeleting ? "disabled" : ""}>
+            <span class="row-action-label">${isRowDeleting ? "…" : "⌫"} Xóa</span>
+          </button>
         </div>
       </td>
     `;
@@ -1147,6 +1273,8 @@ function renderProfileMeta() {
 function renderAll() {
   renderProfileList();
   renderProfileMeta();
+  renderProfileActions();
+  renderEntryFormState();
   renderTimerPanel();
   renderTable();
 }
@@ -1680,6 +1808,10 @@ employeeForm.addEventListener("input", () => {
 entryForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
+  if (isSavingEntry()) {
+    return;
+  }
+
   const normalizedStartTime = entryFields.startTime.value || null;
   const normalizedEndTime = entryFields.endTime.value || null;
 
@@ -1702,6 +1834,7 @@ entryForm.addEventListener("submit", async (event) => {
 
   try {
     const profile = requireActiveProfile("luu dong OT");
+    setSavingEntry(true, entry.id ? "Đang cập nhật dòng OT..." : "Đang thêm dòng OT mới...");
     const entriesToSave = splitEntryAcrossMidnight(entry, {
       preserveIdOnFirstSegment: Boolean(entry.id)
     });
@@ -1722,6 +1855,8 @@ entryForm.addEventListener("submit", async (event) => {
     fillEntryForm();
   } catch (error) {
     toast(formatRequestError(error, "Không lưu được dòng OT."), "error");
+  } finally {
+    setSavingEntry(false);
   }
 });
 
@@ -1733,6 +1868,10 @@ entryTableBody.addEventListener("click", async (event) => {
   }
 
   if (button.classList.contains("edit")) {
+    if (isDeletingEntry(button.dataset.id) || isSavingEntry()) {
+      return;
+    }
+
     const profile = getActiveProfile();
     const entry = profile?.entries.find((item) => item.id === button.dataset.id);
     if (!entry) {
@@ -1744,6 +1883,10 @@ entryTableBody.addEventListener("click", async (event) => {
   }
 
   if (button.classList.contains("delete")) {
+    if (isDeletingEntry(button.dataset.id)) {
+      return;
+    }
+
     try {
       const profile = requireActiveProfile("xoa dong OT");
       const entry = profile.entries.find((item) => item.id === button.dataset.id);
@@ -1756,12 +1899,15 @@ entryTableBody.addEventListener("click", async (event) => {
         return;
       }
 
+      setDeletingEntry(entry.id, true);
       await deleteEntryInApi(profile.username, entry.id);
       await openMyProfile({ silent: true });
       fillEntryForm();
       toast("Đã xóa dòng OT thành công.", "success");
     } catch (error) {
       toast(formatRequestError(error, "Không xóa được dòng OT."), "error");
+    } finally {
+      setDeletingEntry(button.dataset.id, false);
     }
   }
 });
@@ -1793,7 +1939,7 @@ createProfileButton.addEventListener("click", async () => {
 
 deleteProfileButton.addEventListener("click", async () => {
   const profile = getActiveProfile();
-  if (!profile) {
+  if (!profile || isDeletingProfile(profile.username)) {
     return;
   }
 
@@ -1803,10 +1949,13 @@ deleteProfileButton.addEventListener("click", async () => {
   }
 
   try {
+    setDeletingProfile(profile.username, true);
     await deleteProfile(profile.username);
     toast(`Đã xóa hồ sơ "${profile.username}" thành công.`, "success");
   } catch (error) {
     toast(error.message, "error");
+  } finally {
+    setDeletingProfile(profile.username, false);
   }
 });
 
