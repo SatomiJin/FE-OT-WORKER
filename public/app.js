@@ -276,6 +276,69 @@ function timeToMinutes(timeText) {
   return hour === 24 ? 1440 : hour * 60 + minute;
 }
 
+function isOvernightRange(startTime, endTime) {
+  const normalizedStart = normalizeTime24h(startTime);
+  const normalizedEnd = normalizeTime24h(endTime);
+  if (!normalizedStart || !normalizedEnd) {
+    return false;
+  }
+
+  return timeToMinutes(normalizedEnd) < timeToMinutes(normalizedStart);
+}
+
+function shiftDateByDays(dateText, days) {
+  const match = String(dateText ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return "";
+  }
+
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + days);
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+}
+
+function splitEntryAcrossMidnight(entry, options = {}) {
+  const { preserveIdOnFirstSegment = false } = options;
+  const normalizedEntry = sanitizeEntry(entry);
+  const normalizedStart = normalizeTime24h(normalizedEntry.startTime);
+  const normalizedEnd = normalizeTime24h(normalizedEntry.endTime);
+
+  if (!normalizedEntry.date || !normalizedStart || !normalizedEnd || !isOvernightRange(normalizedStart, normalizedEnd)) {
+    return [normalizedEntry];
+  }
+
+  const nextDate = shiftDateByDays(normalizedEntry.date, 1);
+  if (!nextDate) {
+    return [normalizedEntry];
+  }
+
+  const firstSegment = {
+    ...normalizedEntry,
+    id: preserveIdOnFirstSegment ? normalizedEntry.id : "",
+    startTime: normalizedStart,
+    endTime: "24:00"
+  };
+
+  if (normalizedEnd === "00:00") {
+    return [firstSegment];
+  }
+
+  return [
+    firstSegment,
+    {
+      ...normalizedEntry,
+      id: "",
+      date: nextDate,
+      startTime: "00:00",
+      endTime: normalizedEnd
+    }
+  ];
+}
+
+function splitEntriesAcrossMidnight(entries, options = {}) {
+  return entries.flatMap((entry) => splitEntryAcrossMidnight(entry, options));
+}
+
 function normalizeTime24h(value) {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) {
@@ -1344,13 +1407,14 @@ function applyOtExportDataStyles(row) {
 async function downloadExcel() {
   const profile = exportableProfile();
   const month = getSelectedMonth() || guessMonthForProfile(profile);
+  const exportRecords = splitEntriesAcrossMidnight(profile.entries).filter((entry) => entry.date.startsWith(month));
 
   if (!window.ExcelJS?.Workbook) {
     toast("Thiếu thư viện export .xlsx. Hãy tải lại trang rồi thử lại.", "error");
     return;
   }
 
-  const workbook = createOtExportWorkbook(filteredEntriesForMonth(), profile.employee);
+  const workbook = createOtExportWorkbook(exportRecords, profile.employee);
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob(
     [buffer],
@@ -1482,7 +1546,7 @@ async function importProfileFromFile(file) {
 
       mergeProfile(await updateProfileInApi(profile));
 
-      for (const entry of profile.entries) {
+      for (const entry of splitEntriesAcrossMidnight(profile.entries)) {
         await createEntryInApi(profile.username, entry);
       }
 
@@ -1634,11 +1698,19 @@ entryForm.addEventListener("submit", async (event) => {
 
   try {
     const profile = requireActiveProfile("luu dong OT");
+    const entriesToSave = splitEntriesAcrossMidnight(entry, {
+      preserveIdOnFirstSegment: Boolean(entry.id)
+    });
     if (entry.id) {
-      await updateEntryInApi(profile.username, entry.id, entry);
+      await updateEntryInApi(profile.username, entry.id, entriesToSave[0]);
+      for (const extraEntry of entriesToSave.slice(1)) {
+        await createEntryInApi(profile.username, extraEntry);
+      }
       toast("Đã cập nhật dòng OT thành công.", "success");
     } else {
-      await createEntryInApi(profile.username, entry);
+      for (const newEntry of entriesToSave) {
+        await createEntryInApi(profile.username, newEntry);
+      }
       toast("Đã thêm dòng OT mới thành công.", "success");
     }
 
