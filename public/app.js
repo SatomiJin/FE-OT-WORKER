@@ -5,7 +5,7 @@ import {
   replayPersistedDebugLogs,
   refreshSession,
   requireSession,
-  signOut
+  signOut,
 } from "./auth.js";
 
 function toast(message, type = "info") {
@@ -13,7 +13,7 @@ function toast(message, type = "info") {
     success: "linear-gradient(135deg, #2e7d32, #43a047)",
     error: "linear-gradient(135deg, #c62828, #e53935)",
     info: "linear-gradient(135deg, #1565c0, #1e88e5)",
-    warning: "linear-gradient(135deg, #e65100, #fb8c00)"
+    warning: "linear-gradient(135deg, #e65100, #fb8c00)",
   };
   Toastify({
     text: message,
@@ -21,7 +21,7 @@ function toast(message, type = "info") {
     gravity: "top",
     position: "right",
     stopOnFocus: true,
-    style: { background: backgrounds[type] ?? backgrounds.info }
+    style: { background: backgrounds[type] ?? backgrounds.info },
   }).showToast();
 }
 
@@ -49,7 +49,9 @@ function formatRequestError(error, fallbackMessage = "Request failed.") {
   }
 
   const statusText = error.status ? ` [HTTP ${error.status}]` : "";
-  const message = error.message ? String(error.message).trim() : fallbackMessage;
+  const message = error.message
+    ? String(error.message).trim()
+    : fallbackMessage;
   return `${message}${statusText}`;
 }
 
@@ -66,8 +68,8 @@ const state = {
     deletingEntryIds: new Set(),
     deletingProfileUsername: "",
     creatingProfile: false,
-    stoppingTimer: false
-  }
+    stoppingTimer: false,
+  },
 };
 
 const profileForm = document.querySelector("#profileForm");
@@ -108,18 +110,20 @@ const employeeFields = {
   label: employeeForm.elements.namedItem("label"),
   employeeCode: employeeForm.elements.namedItem("employeeCode"),
   fullName: employeeForm.elements.namedItem("fullName"),
-  sheetName: employeeForm.elements.namedItem("sheetName")
+  sheetName: employeeForm.elements.namedItem("sheetName"),
 };
 const entryFields = {
   id: entryForm.elements.namedItem("id"),
   date: entryForm.elements.namedItem("date"),
   startTime: entryForm.elements.namedItem("startTime"),
   endTime: entryForm.elements.namedItem("endTime"),
-  note: entryForm.elements.namedItem("note")
+  note: entryForm.elements.namedItem("note"),
 };
-const timePickerRoots = Array.from(document.querySelectorAll("[data-time-picker]"));
+const timePickerRoots = Array.from(
+  document.querySelectorAll("[data-time-picker]"),
+);
 const timePickerState = {
-  activeRoot: null
+  activeRoot: null,
 };
 
 function escapeHtml(value) {
@@ -159,10 +163,10 @@ function createBlankProfile(username = "my-profile") {
       label: username.slice(0, 4).toUpperCase() || "DEMO",
       employeeCode: "",
       fullName: "",
-      sheetName: "Trang tinh1"
+      sheetName: "Trang tinh1",
     },
     entries: [],
-    activeTimer: null
+    activeTimer: null,
   };
 }
 
@@ -178,7 +182,7 @@ function sanitizeTimer(rawTimer) {
 
   return {
     startedAt,
-    note: String(rawTimer.note ?? "").trim()
+    note: String(rawTimer.note ?? "").trim(),
   };
 }
 
@@ -188,12 +192,13 @@ function sanitizeEntry(rawEntry) {
     date: String(rawEntry?.date ?? "").trim(),
     startTime: String(rawEntry?.startTime ?? "").trim(),
     endTime: String(rawEntry?.endTime ?? "").trim(),
-    note: String(rawEntry?.note ?? "").trim()
+    note: String(rawEntry?.note ?? "").trim(),
   };
 }
 
 function sanitizeProfile(rawProfile, fallbackUsername = "my-profile") {
-  const username = slugifyUsername(rawProfile?.username ?? fallbackUsername) || "my-profile";
+  const username =
+    slugifyUsername(rawProfile?.username ?? fallbackUsername) || "my-profile";
   const employee = rawProfile?.employee ?? {};
   const entries = Array.isArray(rawProfile?.entries) ? rawProfile.entries : [];
 
@@ -201,22 +206,28 @@ function sanitizeProfile(rawProfile, fallbackUsername = "my-profile") {
     username,
     selectedMonth: String(rawProfile?.selectedMonth ?? "").trim(),
     employee: {
-      label: String(employee.label ?? (username.slice(0, 4).toUpperCase() || "DEMO")).trim() || "DEMO",
+      label:
+        String(
+          employee.label ?? (username.slice(0, 4).toUpperCase() || "DEMO"),
+        ).trim() || "DEMO",
       employeeCode: String(employee.employeeCode ?? "").trim(),
       fullName: String(employee.fullName ?? "").trim(),
-      sheetName: String(employee.sheetName ?? "Trang tinh1").trim() || "Trang tinh1"
+      sheetName:
+        String(employee.sheetName ?? "Trang tinh1").trim() || "Trang tinh1",
     },
     activeTimer: sanitizeTimer(rawProfile?.activeTimer),
     entries: entries
       .map((entry) => sanitizeEntry(entry))
-      .filter((entry) => entry.id && entry.date && entry.startTime && entry.endTime)
+      .filter(
+        (entry) => entry.id && entry.date && entry.startTime && entry.endTime,
+      ),
   };
 }
 
 function mergeProfile(profile) {
   const normalizedProfile = sanitizeProfile(profile, profile?.username);
   state.profiles = {
-    [normalizedProfile.username]: normalizedProfile
+    [normalizedProfile.username]: normalizedProfile,
   };
   state.activeUsername = normalizedProfile.username;
   return normalizedProfile;
@@ -243,7 +254,10 @@ function isDeletingEntry(entryId) {
 }
 
 function isDeletingProfile(username) {
-  return slugifyUsername(username) !== "" && state.loading.deletingProfileUsername === slugifyUsername(username);
+  return (
+    slugifyUsername(username) !== "" &&
+    state.loading.deletingProfileUsername === slugifyUsername(username)
+  );
 }
 
 function isCreatingProfile() {
@@ -281,7 +295,9 @@ function setDeletingEntry(entryId, isLoading) {
 }
 
 function setDeletingProfile(username, isLoading) {
-  state.loading.deletingProfileUsername = isLoading ? slugifyUsername(username) : "";
+  state.loading.deletingProfileUsername = isLoading
+    ? slugifyUsername(username)
+    : "";
   renderProfileList();
   renderProfileMeta();
   renderProfileActions();
@@ -300,7 +316,9 @@ function setStoppingTimer(isLoading) {
 function requireActiveProfile(actionLabel = "thuc hien thao tac nay") {
   const profile = getActiveProfile();
   if (!profile) {
-    throw new Error(`Chua mo duoc ho so OT cua account hien tai, nen khong the ${actionLabel}. Hay bam "Tai ho so cua toi" truoc.`);
+    throw new Error(
+      `Chua mo duoc ho so OT cua account hien tai, nen khong the ${actionLabel}. Hay bam "Tai ho so cua toi" truoc.`,
+    );
   }
 
   return profile;
@@ -322,8 +340,11 @@ function setActiveUsername(username) {
 }
 
 function guessMonthForProfile(profile) {
-  const firstEntry = [...(profile?.entries ?? [])]
-    .sort((left, right) => `${left.date} ${left.startTime}`.localeCompare(`${right.date} ${right.startTime}`))[0];
+  const firstEntry = [...(profile?.entries ?? [])].sort((left, right) =>
+    `${left.date} ${left.startTime}`.localeCompare(
+      `${right.date} ${right.startTime}`,
+    ),
+  )[0];
 
   if (firstEntry?.date?.slice(0, 7)) {
     return firstEntry.date.slice(0, 7);
@@ -368,12 +389,16 @@ function isOvernightRange(startTime, endTime) {
 }
 
 function shiftDateByDays(dateText, days) {
-  const match = String(dateText ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const match = String(dateText ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) {
     return "";
   }
 
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  const date = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  );
   date.setUTCDate(date.getUTCDate() + days);
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
@@ -384,7 +409,12 @@ function splitEntryAcrossMidnight(entry, options = {}) {
   const normalizedStart = normalizeTime24h(normalizedEntry.startTime);
   const normalizedEnd = normalizeTime24h(normalizedEntry.endTime);
 
-  if (!normalizedEntry.date || !normalizedStart || !normalizedEnd || !isOvernightRange(normalizedStart, normalizedEnd)) {
+  if (
+    !normalizedEntry.date ||
+    !normalizedStart ||
+    !normalizedEnd ||
+    !isOvernightRange(normalizedStart, normalizedEnd)
+  ) {
     return [normalizedEntry];
   }
 
@@ -397,7 +427,7 @@ function splitEntryAcrossMidnight(entry, options = {}) {
     ...normalizedEntry,
     id: preserveIdOnFirstSegment ? normalizedEntry.id : "",
     startTime: normalizedStart,
-    endTime: "24:00"
+    endTime: "24:00",
   };
 
   if (normalizedEnd === "00:00") {
@@ -411,8 +441,8 @@ function splitEntryAcrossMidnight(entry, options = {}) {
       id: "",
       date: nextDate,
       startTime: "00:00",
-      endTime: normalizedEnd
-    }
+      endTime: normalizedEnd,
+    },
   ];
 }
 
@@ -509,7 +539,7 @@ function buildEntryFromTimer(timer, endDate = new Date()) {
     date: formatDateInputValue(startedAt),
     startTime: formatTimeInputValue(startedAt),
     endTime: formatTimeInputValue(endDate),
-    note: String(timer.note ?? "").trim()
+    note: String(timer.note ?? "").trim(),
   };
 }
 
@@ -558,7 +588,7 @@ function getTimeParts(timeText) {
   const [hourText, minuteText] = normalized.split(":");
   return {
     hour: Number(hourText),
-    minute: Number(minuteText)
+    minute: Number(minuteText),
   };
 }
 
@@ -585,7 +615,9 @@ function syncTimePicker(root) {
   root.querySelectorAll(".time-picker-option").forEach((option) => {
     const optionValue = Number(option.dataset.value);
     const isHourOption = option.dataset.part === "hour";
-    const selected = isHourOption ? optionValue === selectedHour : optionValue === selectedMinute;
+    const selected = isHourOption
+      ? optionValue === selectedHour
+      : optionValue === selectedMinute;
     const disabled = !isHourOption && selectedHour === 24 && optionValue !== 0;
     option.classList.toggle("is-selected", selected);
     option.classList.toggle("is-disabled", disabled);
@@ -600,7 +632,7 @@ function syncAllTimePickers() {
 function scrollSelectedOptionIntoView(root) {
   root.querySelectorAll(".time-picker-option.is-selected").forEach((option) => {
     option.scrollIntoView({
-      block: "nearest"
+      block: "nearest",
     });
   });
 }
@@ -643,18 +675,28 @@ function positionTimePicker(root) {
   popover.style.removeProperty("--time-picker-list-max-height");
 
   const inputRect = input.getBoundingClientRect();
-  const estimatedPopoverHeight = Math.min(360, window.innerHeight - viewportPadding * 2);
+  const estimatedPopoverHeight = Math.min(
+    360,
+    window.innerHeight - viewportPadding * 2,
+  );
   const spaceBelow = window.innerHeight - inputRect.bottom - viewportPadding;
   const spaceAbove = inputRect.top - viewportPadding;
-  const shouldDropUp = spaceBelow < estimatedPopoverHeight && spaceAbove > spaceBelow;
-  const availableSpace = Math.max(180, (shouldDropUp ? spaceAbove : spaceBelow) - gap);
+  const shouldDropUp =
+    spaceBelow < estimatedPopoverHeight && spaceAbove > spaceBelow;
+  const availableSpace = Math.max(
+    180,
+    (shouldDropUp ? spaceAbove : spaceBelow) - gap,
+  );
   const listMaxHeight = Math.max(120, Math.floor(availableSpace - 70));
 
   if (shouldDropUp) {
     root.classList.add("time-picker--drop-up");
   }
 
-  popover.style.setProperty("--time-picker-list-max-height", `${listMaxHeight}px`);
+  popover.style.setProperty(
+    "--time-picker-list-max-height",
+    `${listMaxHeight}px`,
+  );
 }
 
 function openTimePicker(root) {
@@ -691,7 +733,11 @@ function handleTimeOptionClick(option) {
   const nextValue = Number(option.dataset.value);
 
   if (option.dataset.part === "hour") {
-    updateTimeInputValue(input, nextValue, nextValue === 24 ? 0 : currentParts.minute);
+    updateTimeInputValue(
+      input,
+      nextValue,
+      nextValue === 24 ? 0 : currentParts.minute,
+    );
     syncTimePicker(root);
     scrollSelectedOptionIntoView(root);
     if (nextValue === 24) {
@@ -736,7 +782,11 @@ function setupTimePickers() {
     });
 
     input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+      if (
+        event.key === "Enter" ||
+        event.key === " " ||
+        event.key === "ArrowDown"
+      ) {
         event.preventDefault();
         openTimePicker(root);
       }
@@ -748,7 +798,10 @@ function setupTimePickers() {
   });
 
   document.addEventListener("click", (event) => {
-    if (timePickerState.activeRoot && !timePickerState.activeRoot.contains(event.target)) {
+    if (
+      timePickerState.activeRoot &&
+      !timePickerState.activeRoot.contains(event.target)
+    ) {
       closeTimePicker(timePickerState.activeRoot);
     }
   });
@@ -759,11 +812,15 @@ function setupTimePickers() {
     }
   });
 
-  window.addEventListener("scroll", () => {
-    if (timePickerState.activeRoot) {
-      positionTimePicker(timePickerState.activeRoot);
-    }
-  }, { passive: true });
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (timePickerState.activeRoot) {
+        positionTimePicker(timePickerState.activeRoot);
+      }
+    },
+    { passive: true },
+  );
 
   syncAllTimePickers();
 }
@@ -778,7 +835,7 @@ function syncStateFromEmployeeForm() {
     label: employeeFields.label.value.trim() || "DEMO",
     employeeCode: employeeFields.employeeCode.value.trim(),
     fullName: employeeFields.fullName.value.trim(),
-    sheetName: employeeFields.sheetName.value.trim() || "Trang tinh1"
+    sheetName: employeeFields.sheetName.value.trim() || "Trang tinh1",
   };
 }
 
@@ -790,28 +847,36 @@ function serializeProfile(profile) {
       label: profile.employee.label,
       employeeCode: profile.employee.employeeCode,
       fullName: profile.employee.fullName,
-      sheetName: profile.employee.sheetName
+      sheetName: profile.employee.sheetName,
     },
-    activeTimer: profile.activeTimer ? {
-      startedAt: profile.activeTimer.startedAt,
-      note: profile.activeTimer.note
-    } : null,
+    activeTimer: profile.activeTimer
+      ? {
+          startedAt: profile.activeTimer.startedAt,
+          note: profile.activeTimer.note,
+        }
+      : null,
     entries: profile.entries.map((entry) => ({
       id: entry.id,
       date: entry.date,
       startTime: entry.startTime,
       endTime: entry.endTime,
-      note: entry.note
-    }))
+      note: entry.note,
+    })),
   };
 }
 
 function exportableProfile(profile = getActiveProfile()) {
-  return profile ? serializeProfile(sanitizeProfile(profile, state.activeUsername)) : createBlankProfile();
+  return profile
+    ? serializeProfile(sanitizeProfile(profile, state.activeUsername))
+    : createBlankProfile();
 }
 
 function sortEntries(entries) {
-  return [...entries].sort((left, right) => `${left.date} ${left.startTime}`.localeCompare(`${right.date} ${right.startTime}`));
+  return [...entries].sort((left, right) =>
+    `${left.date} ${left.startTime}`.localeCompare(
+      `${right.date} ${right.startTime}`,
+    ),
+  );
 }
 
 async function apiRequest(path, options = {}) {
@@ -821,7 +886,7 @@ async function apiRequest(path, options = {}) {
     method,
     url: `${API_BASE_URL}${path}`,
     hasToken: Boolean(token),
-    retryOnUnauthorized
+    retryOnUnauthorized,
   });
 
   if (!token) {
@@ -836,15 +901,15 @@ async function apiRequest(path, options = {}) {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
-        ...(body ? { "Content-Type": "application/json" } : {})
+        ...(body ? { "Content-Type": "application/json" } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined
+      body: body ? JSON.stringify(body) : undefined,
     });
   } catch (error) {
     console.error(`${API_LOG_PREFIX} Network request failed`, {
       method,
       url: `${API_BASE_URL}${path}`,
-      error
+      error,
     });
     throw error;
   }
@@ -853,7 +918,7 @@ async function apiRequest(path, options = {}) {
     method,
     url: `${API_BASE_URL}${path}`,
     status: response.status,
-    ok: response.ok
+    ok: response.ok,
   });
 
   if (response.status === 401 && retryOnUnauthorized) {
@@ -865,11 +930,13 @@ async function apiRequest(path, options = {}) {
         return apiRequest(path, {
           method,
           body,
-          retryOnUnauthorized: false
+          retryOnUnauthorized: false,
         });
       }
     } catch {
-      console.error(`${API_LOG_PREFIX} Refresh failed after 401, redirecting to login`);
+      console.error(
+        `${API_LOG_PREFIX} Refresh failed after 401, redirecting to login`,
+      );
       window.location.href = loginPageLink.href;
       return null;
     }
@@ -895,12 +962,12 @@ async function apiRequest(path, options = {}) {
       method,
       url: `${API_BASE_URL}${path}`,
       status: response.status,
-      payload
+      payload,
     });
     const error = new Error(
       payload && typeof payload === "object" && "message" in payload
         ? payload.message
-        : `Request failed with status ${response.status}.`
+        : `Request failed with status ${response.status}.`,
     );
     error.status = response.status;
     error.payload = payload;
@@ -921,7 +988,7 @@ async function apiRequestWithFallback(primaryPath, fallbackPath, options = {}) {
     logApi("Primary route unavailable, falling back", {
       primaryPath,
       fallbackPath,
-      status: error.status
+      status: error.status,
     });
     return apiRequest(fallbackPath, options);
   }
@@ -930,14 +997,19 @@ async function apiRequestWithFallback(primaryPath, fallbackPath, options = {}) {
 function getInitials(displayName, email) {
   const name = displayName || email || "?";
   const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  if (parts.length >= 2)
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
 }
 
 function getSuggestedUsernameFromSession(session) {
   const user = getUserSnapshot(session);
-  const emailPrefix = user.email.includes("@") ? user.email.split("@")[0] : user.email;
-  return slugifyUsername(emailPrefix || user.displayName || user.id) || "my-profile";
+  const emailPrefix = user.email.includes("@")
+    ? user.email.split("@")[0]
+    : user.email;
+  return (
+    slugifyUsername(emailPrefix || user.displayName || user.id) || "my-profile"
+  );
 }
 
 function syncUsernameField() {
@@ -986,23 +1058,19 @@ async function fetchMyProfileFromApi() {
   return sanitizeProfile(
     await apiRequestWithFallback(
       "/api/profiles/me",
-      username ? `/api/profiles/${encodePath(username)}` : null
+      username ? `/api/profiles/${encodePath(username)}` : null,
     ),
-    username || state.suggestedUsername
+    username || state.suggestedUsername,
   );
 }
 
 async function createProfileInApi(username) {
   return sanitizeProfile(
-    await apiRequestWithFallback(
-      "/api/profiles/me/init",
-      "/api/profiles",
-      {
-        method: "POST",
-        body: { username }
-      }
-    ),
-    username
+    await apiRequestWithFallback("/api/profiles/me/init", "/api/profiles", {
+      method: "POST",
+      body: { username },
+    }),
+    username,
   );
 }
 
@@ -1019,17 +1087,19 @@ async function updateProfileInApi(profile) {
             label: profile.employee.label,
             employeeCode: profile.employee.employeeCode,
             fullName: profile.employee.fullName,
-            sheetName: profile.employee.sheetName
-          }
-        }
-      }
+            sheetName: profile.employee.sheetName,
+          },
+        },
+      },
     ),
-    profile.username
+    profile.username,
   );
 }
 
 async function deleteProfileInApi(username) {
-  await apiRequest(`/api/profiles/${encodePath(username)}`, { method: "DELETE" });
+  await apiRequest(`/api/profiles/${encodePath(username)}`, {
+    method: "DELETE",
+  });
 }
 
 async function createEntryInApi(username, entry) {
@@ -1043,10 +1113,10 @@ async function createEntryInApi(username, entry) {
           date: entry.date,
           startTime: entry.startTime,
           endTime: entry.endTime,
-          note: entry.note
-        }
-      }
-    )
+          note: entry.note,
+        },
+      },
+    ),
   );
 }
 
@@ -1061,10 +1131,10 @@ async function updateEntryInApi(username, entryId, entry) {
           date: entry.date,
           startTime: entry.startTime,
           endTime: entry.endTime,
-          note: entry.note
-        }
-      }
-    )
+          note: entry.note,
+        },
+      },
+    ),
   );
 }
 
@@ -1072,7 +1142,7 @@ async function deleteEntryInApi(username, entryId) {
   await apiRequestWithFallback(
     `/api/profiles/me/entries/${encodePath(entryId)}`,
     `/api/profiles/${encodePath(username)}/entries/${encodePath(entryId)}`,
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
 }
 
@@ -1083,9 +1153,9 @@ async function startTimerInApi(username, note) {
       `/api/profiles/${encodePath(username)}/timer/start`,
       {
         method: "POST",
-        body: { note }
-      }
-    )
+        body: { note },
+      },
+    ),
   );
 }
 
@@ -1096,9 +1166,9 @@ async function updateTimerInApi(username, note) {
       `/api/profiles/${encodePath(username)}/timer`,
       {
         method: "PUT",
-        body: { note }
-      }
-    )
+        body: { note },
+      },
+    ),
   );
 }
 
@@ -1109,9 +1179,9 @@ async function stopTimerInApi(username, note) {
       `/api/profiles/${encodePath(username)}/timer/stop`,
       {
         method: "POST",
-        body: { note }
-      }
-    )
+        body: { note },
+      },
+    ),
   );
 }
 
@@ -1145,7 +1215,8 @@ function renderProfileActions() {
   const profile = getActiveProfile();
   const isProfileDeleting = isDeletingProfile(profile?.username);
   const isProfileCreating = isCreatingProfile();
-  deleteProfileButton.disabled = !profile || isProfileDeleting || isProfileCreating;
+  deleteProfileButton.disabled =
+    !profile || isProfileDeleting || isProfileCreating;
   createProfileButton.disabled = isProfileDeleting || isProfileCreating;
 
   if (isProfileDeleting) {
@@ -1164,12 +1235,11 @@ function renderProfileActions() {
 }
 
 function renderStats() {
-  const profile = getActiveProfile();
-  const entries = profile?.entries ?? [];
-  entryCount.textContent = String(entries.length);
-  const totalMinutes = filteredEntriesForMonth().reduce(
+  const entriesForMonth = filteredEntriesForMonth();
+  entryCount.textContent = String(entriesForMonth.length);
+  const totalMinutes = entriesForMonth.reduce(
     (sum, entry) => sum + minutesBetween(entry.startTime, entry.endTime),
-    0
+    0,
   );
   monthHours.textContent = formatDurationMinutes(totalMinutes);
 }
@@ -1220,8 +1290,13 @@ function renderTimerPanel() {
     timerStatus.textContent = `Đang bấm giờ cho hồ sơ "${profile.username}". Khi dừng, backend sẽ tạo dòng OT mới.`;
   }
   timerStartedAt.textContent = formatDateTimeDisplay(timer.startedAt);
-  timerElapsed.textContent = formatDurationMinutes(getTimerDurationMinutes(timer));
-  if (document.activeElement !== timerNoteInput && timerNoteInput.value !== (timer.note ?? "")) {
+  timerElapsed.textContent = formatDurationMinutes(
+    getTimerDurationMinutes(timer),
+  );
+  if (
+    document.activeElement !== timerNoteInput &&
+    timerNoteInput.value !== (timer.note ?? "")
+  ) {
     timerNoteInput.value = timer.note ?? "";
   }
 }
@@ -1301,7 +1376,8 @@ function renderProfileMeta() {
   const profile = getActiveProfile();
   if (!profile) {
     activeProfileName.textContent = "Chưa có hồ sơ";
-    profileHint.textContent = "Account đang nhập hiện tại chưa có hồ sơ OT. Có thể đặt username và tạo hồ sơ mới.";
+    profileHint.textContent =
+      "Account đang nhập hiện tại chưa có hồ sơ OT. Có thể đặt username và tạo hồ sơ mới.";
     syncUsernameField();
     return;
   }
@@ -1331,7 +1407,9 @@ function triggerDownload(blob, fileName) {
 
 function downloadJson() {
   const profile = exportableProfile();
-  const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(profile, null, 2)], {
+    type: "application/json",
+  });
   triggerDownload(blob, `${profile.username}.ot.json`);
 }
 
@@ -1345,14 +1423,16 @@ const OT_EXPORT_HEADERS = [
   "Thời gian vào ca",
   "Thời gian ra ca",
   "Tổng giờ OT",
-  "Giải trình (7,14,21,28)"
+  "Giải trình (7,14,21,28)",
 ];
-const OT_EXPORT_COLUMN_WIDTHS = [16.75, 16.75, 22.13, 22.13, 36.63, 16.75, 16.75, 16.75, 94.75];
+const OT_EXPORT_COLUMN_WIDTHS = [
+  16.75, 16.75, 22.13, 22.13, 36.63, 16.75, 16.75, 16.75, 94.75,
+];
 const OT_EXPORT_COLORS = {
   headerText: "FF914D4F",
   dateFill: "FFB7E1CD",
   hoursText: "FF4A86E8",
-  border: "FF000000"
+  border: "FF000000",
 };
 
 function createOtExportBorder() {
@@ -1360,7 +1440,7 @@ function createOtExportBorder() {
     top: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
     right: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
     bottom: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
-    left: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } }
+    left: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
   };
 }
 
@@ -1368,25 +1448,25 @@ function createOtExportHeaderStyle(overrides = {}) {
   return {
     font: {
       bold: true,
-      color: { argb: OT_EXPORT_COLORS.headerText }
+      color: { argb: OT_EXPORT_COLORS.headerText },
     },
     alignment: {
       horizontal: "center",
       vertical: "middle",
-      wrapText: true
+      wrapText: true,
     },
     border: createOtExportBorder(),
-    ...overrides
+    ...overrides,
   };
 }
 
 function createOtExportCellStyle(overrides = {}) {
   return {
     alignment: {
-      vertical: "middle"
+      vertical: "middle",
     },
     border: createOtExportBorder(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -1395,7 +1475,9 @@ function parseExcelCompatibleDate(value) {
     return new Date(value.getFullYear(), value.getMonth(), value.getDate());
   }
 
-  const match = String(value ?? "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) {
     return null;
   }
@@ -1434,7 +1516,9 @@ function parseExcelCompatibleTime(value) {
     return null;
   }
 
-  const totalSeconds = isMidnightBoundary ? 86400 : hour * 3600 + minute * 60 + second;
+  const totalSeconds = isMidnightBoundary
+    ? 86400
+    : hour * 3600 + minute * 60 + second;
   return totalSeconds / 86400;
 }
 
@@ -1455,11 +1539,12 @@ function normalizeOtExportRecord(record) {
     endTimeSerial,
     startTimeText,
     endTimeText,
-    totalHours: minutesBetween(
-      normalizeTime24h(startTimeText) ?? startTimeText,
-      normalizeTime24h(endTimeText) ?? endTimeText
-    ) / 60,
-    note: String(record?.note ?? "").trim()
+    totalHours:
+      minutesBetween(
+        normalizeTime24h(startTimeText) ?? startTimeText,
+        normalizeTime24h(endTimeText) ?? endTimeText,
+      ) / 60,
+    note: String(record?.note ?? "").trim(),
   };
 }
 
@@ -1468,7 +1553,7 @@ function createOtExportWorkbook(records, employee = {}) {
   workbook.creator = "OT Tracker";
   workbook.calcProperties.fullCalcOnLoad = true;
   const worksheet = workbook.addWorksheet(OT_EXPORT_SHEET_NAME, {
-    views: [{ state: "frozen", ySplit: 1 }]
+    views: [{ state: "frozen", ySplit: 1 }],
   });
 
   setOtExportColumnWidths(worksheet);
@@ -1500,14 +1585,14 @@ function applyOtExportHeaderStyles(row) {
       headerStyle.fill = {
         type: "pattern",
         pattern: "solid",
-        fgColor: { argb: OT_EXPORT_COLORS.dateFill }
+        fgColor: { argb: OT_EXPORT_COLORS.dateFill },
       };
     }
 
     if (columnNumber === 8) {
       headerStyle.font = {
         bold: true,
-        color: { argb: OT_EXPORT_COLORS.hoursText }
+        color: { argb: OT_EXPORT_COLORS.hoursText },
       };
     }
 
@@ -1535,7 +1620,7 @@ function writeOtExportRows(worksheet, records, employee) {
     row.getCell(7).value = record.endTimeSerial;
     row.getCell(8).value = {
       formula: `MOD(G${rowNumber}-F${rowNumber},1)*24`,
-      result: record.totalHours
+      result: record.totalHours,
     };
     row.getCell(9).value = record.note;
 
@@ -1551,15 +1636,15 @@ function applyOtExportDataStyles(row) {
     cell.style = createOtExportCellStyle({
       alignment: {
         horizontal: isCentered ? "center" : "left",
-        vertical: "middle"
-      }
+        vertical: "middle",
+      },
     });
 
     if (columnNumber === 5) {
       cell.fill = {
         type: "pattern",
         pattern: "solid",
-        fgColor: { argb: OT_EXPORT_COLORS.dateFill }
+        fgColor: { argb: OT_EXPORT_COLORS.dateFill },
       };
       cell.numFmt = "dd/MM/yyyy";
     }
@@ -1570,7 +1655,7 @@ function applyOtExportDataStyles(row) {
 
     if (columnNumber === 8) {
       cell.font = {
-        color: { argb: OT_EXPORT_COLORS.hoursText }
+        color: { argb: OT_EXPORT_COLORS.hoursText },
       };
       cell.numFmt = "0.##";
     }
@@ -1580,19 +1665,23 @@ function applyOtExportDataStyles(row) {
 async function downloadExcel() {
   const profile = exportableProfile();
   const month = getSelectedMonth() || guessMonthForProfile(profile);
-  const exportRecords = splitEntriesAcrossMidnight(profile.entries).filter((entry) => entry.date.startsWith(month));
+  const exportRecords = splitEntriesAcrossMidnight(profile.entries).filter(
+    (entry) => entry.date.startsWith(month),
+  );
 
   if (!window.ExcelJS?.Workbook) {
-    toast("Thiếu thư viện export .xlsx. Hãy tải lại trang rồi thử lại.", "error");
+    toast(
+      "Thiếu thư viện export .xlsx. Hãy tải lại trang rồi thử lại.",
+      "error",
+    );
     return;
   }
 
   const workbook = createOtExportWorkbook(exportRecords, profile.employee);
   const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob(
-    [buffer],
-    { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
-  );
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
   triggerDownload(blob, `${profile.username}-${month}.xlsx`);
 }
 
@@ -1608,7 +1697,10 @@ async function openMyProfile(options = {}) {
   } catch (error) {
     if (!options.silent) {
       if (error.status === 404) {
-        toast("Account đăng nhập hiện tại chưa có hồ sơ trên backend. Hãy bấm \"Tạo hồ sơ mới\" nếu cần.", "warning");
+        toast(
+          'Account đăng nhập hiện tại chưa có hồ sơ trên backend. Hãy bấm "Tạo hồ sơ mới" nếu cần.',
+          "warning",
+        );
       } else {
         toast(error.message, "error");
       }
@@ -1707,9 +1799,9 @@ async function importProfileFromFile(file) {
       const profile = sanitizeProfile(
         {
           ...parsed,
-          username: targetUsername
+          username: targetUsername,
         },
-        targetUsername
+        targetUsername,
       );
 
       try {
@@ -1729,12 +1821,18 @@ async function importProfileFromFile(file) {
       await openMyProfile({ silent: true });
 
       if (profile.activeTimer) {
-        toast("Đã import profile và entries. Active timer trong file JSON không được phục hồi vì backend tự quản lý thời điểm start/stop.", "warning");
+        toast(
+          "Đã import profile và entries. Active timer trong file JSON không được phục hồi vì backend tự quản lý thời điểm start/stop.",
+          "warning",
+        );
       } else {
         toast("Import JSON thành công.", "success");
       }
     } catch (error) {
-      toast(`Không đọc được file JSON: ${error instanceof Error ? error.message : String(error)}`, "error");
+      toast(
+        `Không đọc được file JSON: ${error instanceof Error ? error.message : String(error)}`,
+        "error",
+      );
     } finally {
       importJsonInput.value = "";
     }
@@ -1745,7 +1843,10 @@ async function importProfileFromFile(file) {
 async function startTimerForActiveProfile() {
   try {
     const profile = requireActiveProfile("bat dau OT");
-    profile.activeTimer = await startTimerInApi(profile.username, timerNoteInput.value.trim());
+    profile.activeTimer = await startTimerInApi(
+      profile.username,
+      timerNoteInput.value.trim(),
+    );
     renderAll();
     toast("Đã bắt đầu bấm giờ OT.", "success");
   } catch (error) {
@@ -1789,7 +1890,10 @@ function queueTimerNoteSave() {
   window.clearTimeout(state.timerNoteSaveHandle);
   state.timerNoteSaveHandle = window.setTimeout(async () => {
     try {
-      profile.activeTimer = await updateTimerInApi(profile.username, timerNoteInput.value.trim());
+      profile.activeTimer = await updateTimerInApi(
+        profile.username,
+        timerNoteInput.value.trim(),
+      );
       renderTimerPanel();
       renderJsonPreview();
     } catch (error) {
@@ -1801,7 +1905,7 @@ function queueTimerNoteSave() {
 async function loadInitialState() {
   logApp("loadInitialState start", {
     href: window.location.href,
-    apiBaseUrl: API_BASE_URL
+    apiBaseUrl: API_BASE_URL,
   });
   const session = await requireSession();
   if (!session) {
@@ -1811,7 +1915,7 @@ async function loadInitialState() {
 
   logApp("Session ready on app page", {
     userId: session.user?.id ?? null,
-    email: session.user?.email ?? null
+    email: session.user?.email ?? null,
   });
   state.suggestedUsername = getSuggestedUsernameFromSession(session);
   renderAuthSession(session);
@@ -1819,13 +1923,13 @@ async function loadInitialState() {
   renderAll();
 
   logApp("Opening profile for signed-in account", {
-    suggestedUsername: state.suggestedUsername
+    suggestedUsername: state.suggestedUsername,
   });
   const opened = await openMyProfile({ silent: true });
   if (!opened) {
     renderProfileMeta();
     logApp("No profile found for signed-in account", {
-      suggestedUsername: state.suggestedUsername
+      suggestedUsername: state.suggestedUsername,
     });
   }
 }
@@ -1876,7 +1980,7 @@ entryForm.addEventListener("submit", async (event) => {
     date: entryFields.date.value,
     startTime: normalizedStartTime,
     endTime: normalizedEndTime,
-    note: entryFields.note.value.trim()
+    note: entryFields.note.value.trim(),
   };
 
   if (!entry.date || !entry.startTime || !entry.endTime) {
@@ -1885,9 +1989,12 @@ entryForm.addEventListener("submit", async (event) => {
 
   try {
     const profile = requireActiveProfile("luu dong OT");
-    setSavingEntry(true, entry.id ? "Đang cập nhật dòng OT..." : "Đang thêm dòng OT mới...");
+    setSavingEntry(
+      true,
+      entry.id ? "Đang cập nhật dòng OT..." : "Đang thêm dòng OT mới...",
+    );
     const entriesToSave = splitEntryAcrossMidnight(entry, {
-      preserveIdOnFirstSegment: Boolean(entry.id)
+      preserveIdOnFirstSegment: Boolean(entry.id),
     });
     if (entry.id) {
       await updateEntryInApi(profile.username, entry.id, entriesToSave[0]);
@@ -1911,7 +2018,6 @@ entryForm.addEventListener("submit", async (event) => {
   }
 });
 
-
 entryTableBody.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
   if (!button) {
@@ -1924,7 +2030,9 @@ entryTableBody.addEventListener("click", async (event) => {
     }
 
     const profile = getActiveProfile();
-    const entry = profile?.entries.find((item) => item.id === button.dataset.id);
+    const entry = profile?.entries.find(
+      (item) => item.id === button.dataset.id,
+    );
     if (!entry) {
       return;
     }
@@ -1940,13 +2048,22 @@ entryTableBody.addEventListener("click", async (event) => {
 
     try {
       const profile = requireActiveProfile("xoa dong OT");
-      const entry = profile.entries.find((item) => item.id === button.dataset.id);
+      const entry = profile.entries.find(
+        (item) => item.id === button.dataset.id,
+      );
       if (!entry) {
-        toast("Không tìm thấy dòng OT cần xóa trong dữ liệu hiện tại.", "error");
+        toast(
+          "Không tìm thấy dòng OT cần xóa trong dữ liệu hiện tại.",
+          "error",
+        );
         return;
       }
 
-      if (!toastConfirm(`Xóa dòng OT ngày ${entry.date} (${entry.startTime} – ${entry.endTime})?`)) {
+      if (
+        !toastConfirm(
+          `Xóa dòng OT ngày ${entry.date} (${entry.startTime} – ${entry.endTime})?`,
+        )
+      ) {
         return;
       }
 
@@ -1994,7 +2111,9 @@ deleteProfileButton.addEventListener("click", async () => {
     return;
   }
 
-  const confirmed = toastConfirm(`Xóa hồ sơ "${profile.username}" trên backend?`);
+  const confirmed = toastConfirm(
+    `Xóa hồ sơ "${profile.username}" trên backend?`,
+  );
   if (!confirmed) {
     return;
   }
