@@ -64,7 +64,9 @@ const state = {
   loading: {
     savingEntry: false,
     deletingEntryIds: new Set(),
-    deletingProfileUsername: ""
+    deletingProfileUsername: "",
+    creatingProfile: false,
+    stoppingTimer: false
   }
 };
 
@@ -244,6 +246,14 @@ function isDeletingProfile(username) {
   return slugifyUsername(username) !== "" && state.loading.deletingProfileUsername === slugifyUsername(username);
 }
 
+function isCreatingProfile() {
+  return state.loading.creatingProfile;
+}
+
+function isStoppingTimer() {
+  return state.loading.stoppingTimer;
+}
+
 function setSavingEntry(isLoading, label = "Đang lưu dòng OT...") {
   state.loading.savingEntry = Boolean(isLoading);
   if (entryFormOverlay) {
@@ -275,6 +285,16 @@ function setDeletingProfile(username, isLoading) {
   renderProfileList();
   renderProfileMeta();
   renderProfileActions();
+}
+
+function setCreatingProfile(isLoading) {
+  state.loading.creatingProfile = Boolean(isLoading);
+  renderProfileActions();
+}
+
+function setStoppingTimer(isLoading) {
+  state.loading.stoppingTimer = Boolean(isLoading);
+  renderTimerPanel();
 }
 
 function requireActiveProfile(actionLabel = "thuc hien thao tac nay") {
@@ -1124,8 +1144,9 @@ function renderProfileList() {
 function renderProfileActions() {
   const profile = getActiveProfile();
   const isProfileDeleting = isDeletingProfile(profile?.username);
-  deleteProfileButton.disabled = !profile || isProfileDeleting;
-  createProfileButton.disabled = isProfileDeleting;
+  const isProfileCreating = isCreatingProfile();
+  deleteProfileButton.disabled = !profile || isProfileDeleting || isProfileCreating;
+  createProfileButton.disabled = isProfileDeleting || isProfileCreating;
 
   if (isProfileDeleting) {
     deleteProfileButton.innerHTML = `
@@ -1136,6 +1157,10 @@ function renderProfileActions() {
   }
 
   deleteProfileButton.textContent = "Xóa hồ sơ";
+
+  createProfileButton.innerHTML = isProfileCreating
+    ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang tạo hồ sơ...</span>'
+    : "Tạo hồ sơ cho account này";
 }
 
 function renderStats() {
@@ -1158,10 +1183,14 @@ function renderTimerPanel() {
   const profile = getActiveProfile();
   const timer = getTimer(profile);
   const hasProfile = Boolean(profile);
+  const isTimerStopping = isStoppingTimer();
 
-  timerNoteInput.disabled = !hasProfile;
-  startTimerButton.disabled = !hasProfile || Boolean(timer);
-  stopTimerButton.disabled = !timer;
+  timerNoteInput.disabled = !hasProfile || isTimerStopping;
+  startTimerButton.disabled = !hasProfile || Boolean(timer) || isTimerStopping;
+  stopTimerButton.disabled = !timer || isTimerStopping;
+  stopTimerButton.innerHTML = isTimerStopping
+    ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang dừng và lưu OT...</span>'
+    : "Dừng và lưu OT";
 
   if (!profile) {
     timerStatus.textContent = "Chưa có hồ sơ để bấm giờ.";
@@ -1183,7 +1212,13 @@ function renderTimerPanel() {
     return;
   }
 
-  timerStatus.textContent = `Đang bấm giờ cho hồ sơ "${profile.username}". Khi dừng, backend sẽ tạo dòng OT mới.`;
+  if (isTimerStopping) {
+    timerStatus.textContent = `Đang dừng timer và lưu OT cho hồ sơ "${profile.username}"...`;
+  }
+
+  if (!isTimerStopping) {
+    timerStatus.textContent = `Đang bấm giờ cho hồ sơ "${profile.username}". Khi dừng, backend sẽ tạo dòng OT mới.`;
+  }
   timerStartedAt.textContent = formatDateTimeDisplay(timer.startedAt);
   timerElapsed.textContent = formatDurationMinutes(getTimerDurationMinutes(timer));
   if (document.activeElement !== timerNoteInput && timerNoteInput.value !== (timer.note ?? "")) {
@@ -1590,6 +1625,7 @@ async function createProfile(username) {
   }
 
   try {
+    setCreatingProfile(true);
     const profile = await createProfileInApi(normalized);
     mergeProfile(profile);
     setActiveUsername(profile.username);
@@ -1602,6 +1638,8 @@ async function createProfile(username) {
 
     toast(error.message, "error");
     return false;
+  } finally {
+    setCreatingProfile(false);
   }
 }
 
@@ -1716,6 +1754,10 @@ async function startTimerForActiveProfile() {
 }
 
 async function stopTimerForActiveProfile() {
+  if (isStoppingTimer()) {
+    return;
+  }
+
   try {
     const profile = requireActiveProfile("dung va luu OT");
     const timer = getTimer(profile);
@@ -1724,19 +1766,22 @@ async function stopTimerForActiveProfile() {
       return;
     }
 
+    setStoppingTimer(true);
     await stopTimerInApi(profile.username, timerNoteInput.value.trim());
     await openMyProfile({ silent: true });
     fillEntryForm();
     toast("Đã dừng timer và lưu dòng OT mới.", "success");
   } catch (error) {
     toast(formatRequestError(error, "Không dừng được timer."), "error");
+  } finally {
+    setStoppingTimer(false);
   }
 }
 
 function queueTimerNoteSave() {
   const profile = getActiveProfile();
   const timer = getTimer(profile);
-  if (!profile || !timer) {
+  if (!profile || !timer || isStoppingTimer()) {
     return;
   }
 
