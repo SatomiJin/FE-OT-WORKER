@@ -603,6 +603,12 @@ function closeTimePicker(root) {
   }
 }
 
+function closeAllTimePickers() {
+  timePickerRoots.forEach((root) => {
+    closeTimePicker(root);
+  });
+}
+
 function positionTimePicker(root) {
   if (!root) {
     return;
