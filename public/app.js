@@ -336,7 +336,11 @@ function splitEntryAcrossMidnight(entry, options = {}) {
 }
 
 function splitEntriesAcrossMidnight(entries, options = {}) {
-  return entries.flatMap((entry) => splitEntryAcrossMidnight(entry, options));
+  const sourceEntries = Array.isArray(entries) ? entries : [];
+  return sourceEntries.reduce((result, entry) => {
+    result.push(...splitEntryAcrossMidnight(entry, options));
+    return result;
+  }, []);
 }
 
 function normalizeTime24h(value) {
@@ -1698,7 +1702,7 @@ entryForm.addEventListener("submit", async (event) => {
 
   try {
     const profile = requireActiveProfile("luu dong OT");
-    const entriesToSave = splitEntriesAcrossMidnight(entry, {
+    const entriesToSave = splitEntryAcrossMidnight(entry, {
       preserveIdOnFirstSegment: Boolean(entry.id)
     });
     if (entry.id) {
