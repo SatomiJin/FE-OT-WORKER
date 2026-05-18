@@ -33,13 +33,13 @@ const API_BASE_URL = getAuthConfig().apiBaseUrl;
 const APP_LOG_PREFIX = "[OT App]";
 const API_LOG_PREFIX = "[OT API]";
 const WEEKDAY_LABELS = [
-  "Chu nhat",
-  "Thu hai",
-  "Thu ba",
-  "Thu tu",
-  "Thu nam",
-  "Thu sau",
-  "Thu bay",
+  "Chủ nhật",
+  "Thứ hai",
+  "Thứ ba",
+  "Thứ tư",
+  "Thứ năm",
+  "Thứ sáu",
+  "Thứ bảy",
 ];
 const weekdayLabelCache = new Map();
 
