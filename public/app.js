@@ -32,6 +32,16 @@ function toastConfirm(message) {
 const API_BASE_URL = getAuthConfig().apiBaseUrl;
 const APP_LOG_PREFIX = "[OT App]";
 const API_LOG_PREFIX = "[OT API]";
+const WEEKDAY_LABELS = [
+  "Chu nhat",
+  "Thu hai",
+  "Thu ba",
+  "Thu tu",
+  "Thu nam",
+  "Thu sau",
+  "Thu bay",
+];
+const weekdayLabelCache = new Map();
 
 function logApp(step, detail) {
   void step;
@@ -401,6 +411,32 @@ function shiftDateByDays(dateText, days) {
   );
   date.setUTCDate(date.getUTCDate() + days);
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+}
+
+function getWeekdayLabel(dateText) {
+  const normalizedDate = String(dateText ?? "").trim();
+  if (!normalizedDate) {
+    return "";
+  }
+
+  if (weekdayLabelCache.has(normalizedDate)) {
+    return weekdayLabelCache.get(normalizedDate) ?? "";
+  }
+
+  const match = normalizedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    weekdayLabelCache.set(normalizedDate, "");
+    return "";
+  }
+
+  const date = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  );
+  const weekdayLabel = Number.isNaN(date.getTime())
+    ? ""
+    : (WEEKDAY_LABELS[date.getUTCDay()] ?? "");
+  weekdayLabelCache.set(normalizedDate, weekdayLabel);
+  return weekdayLabel;
 }
 
 function splitEntryAcrossMidnight(entry, options = {}) {
@@ -1339,15 +1375,20 @@ function renderTable() {
     return;
   }
 
+  const fragment = document.createDocumentFragment();
   rows.forEach((entry) => {
     const isRowDeleting = isDeletingEntry(entry.id);
+    const weekdayLabel = getWeekdayLabel(entry.date);
     const tr = document.createElement("tr");
     tr.classList.toggle("is-loading", isRowDeleting);
     tr.innerHTML = `
       <td>
-        <span class="row-status">
+        <span class="row-status row-status--date">
           ${isRowDeleting ? '<span class="loading-spinner" aria-hidden="true"></span>' : ""}
-          <span>${escapeHtml(entry.date)}</span>
+          <span class="date-stack">
+            ${weekdayLabel ? `<span class="weekday-badge">${escapeHtml(weekdayLabel)}</span>` : ""}
+            <span class="date-value">${escapeHtml(entry.date)}</span>
+          </span>
         </span>
       </td>
       <td>${entry.startTime}</td>
@@ -1365,8 +1406,9 @@ function renderTable() {
         </div>
       </td>
     `;
-    entryTableBody.append(tr);
+    fragment.append(tr);
   });
+  entryTableBody.append(fragment);
 
   renderStats();
   renderJsonPreview();
