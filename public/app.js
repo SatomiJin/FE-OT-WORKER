@@ -42,6 +42,7 @@ const WEEKDAY_LABELS = [
   "Thứ bảy",
 ];
 const weekdayLabelCache = new Map();
+const DEFAULT_SHEET_NAME = "Sheet1";
 
 function logApp(step, detail) {
   void step;
@@ -149,6 +150,25 @@ function pad(value) {
   return String(value).padStart(2, "0");
 }
 
+function normalizeSheetName(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return DEFAULT_SHEET_NAME;
+  }
+
+  const comparable = normalized
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+
+  if (comparable === "sheet1" || comparable === "trangtinh1") {
+    return DEFAULT_SHEET_NAME;
+  }
+
+  return normalized;
+}
+
 function slugifyUsername(value) {
   return String(value ?? "")
     .normalize("NFD")
@@ -173,7 +193,7 @@ function createBlankProfile(username = "my-profile") {
       label: username.slice(0, 4).toUpperCase() || "DEMO",
       employeeCode: "",
       fullName: "",
-      sheetName: "Trang tinh1",
+      sheetName: DEFAULT_SHEET_NAME,
     },
     entries: [],
     activeTimer: null,
@@ -222,8 +242,7 @@ function sanitizeProfile(rawProfile, fallbackUsername = "my-profile") {
         ).trim() || "DEMO",
       employeeCode: String(employee.employeeCode ?? "").trim(),
       fullName: String(employee.fullName ?? "").trim(),
-      sheetName:
-        String(employee.sheetName ?? "Trang tinh1").trim() || "Trang tinh1",
+      sheetName: normalizeSheetName(employee.sheetName),
     },
     activeTimer: sanitizeTimer(rawProfile?.activeTimer),
     entries: entries
@@ -871,7 +890,7 @@ function syncStateFromEmployeeForm() {
     label: employeeFields.label.value.trim() || "DEMO",
     employeeCode: employeeFields.employeeCode.value.trim(),
     fullName: employeeFields.fullName.value.trim(),
-    sheetName: employeeFields.sheetName.value.trim() || "Trang tinh1",
+    sheetName: normalizeSheetName(employeeFields.sheetName.value),
   };
 }
 
@@ -1455,7 +1474,6 @@ function downloadJson() {
   triggerDownload(blob, `${profile.username}.ot.json`);
 }
 
-const OT_EXPORT_SHEET_NAME = "Trang tính1";
 const OT_EXPORT_HEADERS = [
   "DEMO",
   "MSNV",
@@ -1594,9 +1612,12 @@ function createOtExportWorkbook(records, employee = {}) {
   const workbook = new window.ExcelJS.Workbook();
   workbook.creator = "OT Tracker";
   workbook.calcProperties.fullCalcOnLoad = true;
-  const worksheet = workbook.addWorksheet(OT_EXPORT_SHEET_NAME, {
-    views: [{ state: "frozen", ySplit: 1 }],
-  });
+  const worksheet = workbook.addWorksheet(
+    normalizeSheetName(employee.sheetName),
+    {
+      views: [{ state: "frozen", ySplit: 1 }],
+    },
+  );
 
   setOtExportColumnWidths(worksheet);
   writeOtExportHeader(worksheet);
