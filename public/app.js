@@ -1608,6 +1608,15 @@ function normalizeOtExportRecord(record) {
   };
 }
 
+function formatOtHoursForExport(value) {
+  const normalizedValue = Number(value);
+  if (!Number.isFinite(normalizedValue)) {
+    return "0.00";
+  }
+
+  return normalizedValue.toFixed(2);
+}
+
 function createOtExportWorkbook(records, employee = {}) {
   const workbook = new window.ExcelJS.Workbook();
   workbook.creator = "OT Tracker";
@@ -1682,8 +1691,8 @@ function writeOtExportRows(worksheet, records, employee) {
     row.getCell(6).value = record.startTimeSerial;
     row.getCell(7).value = record.endTimeSerial;
     row.getCell(8).value = {
-      formula: `MOD(G${rowNumber}-F${rowNumber},1)*24`,
-      result: record.totalHours,
+      formula: `SUBSTITUTE(TEXT(MOD(G${rowNumber}-F${rowNumber},1)*24,"0.00"),",",".")`,
+      result: formatOtHoursForExport(record.totalHours),
     };
     row.getCell(9).value = record.note;
 
@@ -1720,7 +1729,7 @@ function applyOtExportDataStyles(row) {
       cell.font = {
         color: { argb: OT_EXPORT_COLORS.hoursText },
       };
-      cell.numFmt = "0.##";
+      cell.numFmt = "@";
     }
   });
 }
