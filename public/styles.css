@@ -472,7 +472,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   border: 1px solid var(--input-border);
   background: var(--input-bg);
@@ -486,14 +487,16 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   outline: none;
   border-color: var(--input-focus);
   box-shadow: 0 0 0 3px rgba(176, 78, 46, 0.12);
 }
 
 [data-theme="dark"] input:focus,
-[data-theme="dark"] textarea:focus {
+[data-theme="dark"] textarea:focus,
+[data-theme="dark"] select:focus {
   box-shadow: 0 0 0 3px rgba(212, 112, 74, 0.14);
 }
 
@@ -504,7 +507,8 @@ textarea::placeholder {
 }
 
 input:disabled,
-textarea:disabled {
+textarea:disabled,
+select:disabled {
   cursor: not-allowed;
   opacity: 0.72;
 }
@@ -614,6 +618,29 @@ textarea:disabled {
 
 .compact-actions {
   margin-top: 2px;
+}
+
+.admin-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.3fr) minmax(
+      150px,
+      0.8fr
+    ) auto;
+  gap: 14px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.admin-actions {
+  align-self: end;
+}
+
+.admin-meta {
+  margin-bottom: 14px;
+}
+
+.admin-table-wrap {
+  margin-top: 14px;
 }
 
 .timer-card {
@@ -1288,6 +1315,9 @@ tbody tr.is-loading td {
   }
   .panel-head p {
     text-align: left;
+  }
+  .admin-controls {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -73,11 +73,19 @@ const state = {
   activeUsername: "",
   currentUserMeta: null,
   profiles: {},
+  admin: {
+    members: [],
+    profiles: [],
+    viewMode: "member",
+    selectedUsername: "",
+    month: "",
+  },
   profileSaveHandle: 0,
   timerNoteSaveHandle: 0,
   loading: {
     savingEntry: false,
     adminExporting: false,
+    adminLoading: false,
     deletingEntryIds: new Set(),
     deletingProfileUsername: "",
     creatingProfile: false,
@@ -97,6 +105,18 @@ const entryTableBody = document.querySelector("#entryTableBody");
 const saveJsonButton = document.querySelector("#saveJsonButton");
 const exportButton = document.querySelector("#exportButton");
 const adminExportButton = document.querySelector("#adminExportButton");
+const adminPanel = document.querySelector("#adminPanel");
+const adminViewMode = document.querySelector("#adminViewMode");
+const adminMemberField = document.querySelector("#adminMemberField");
+const adminMemberSelect = document.querySelector("#adminMemberSelect");
+const adminMonthInput = document.querySelector("#adminMonth");
+const adminLoadButton = document.querySelector("#adminLoadButton");
+const adminViewTitle = document.querySelector("#adminViewTitle");
+const adminViewHint = document.querySelector("#adminViewHint");
+const adminMemberCount = document.querySelector("#adminMemberCount");
+const adminEntryCount = document.querySelector("#adminEntryCount");
+const adminTotalHours = document.querySelector("#adminTotalHours");
+const adminEntryTableBody = document.querySelector("#adminEntryTableBody");
 const importJsonInput = document.querySelector("#importJsonInput");
 const importJsonButton = document.querySelector("#importJsonButton");
 const resetFormButton = document.querySelector("#resetFormButton");
@@ -300,28 +320,12 @@ function isAdminExporting() {
   return state.loading.adminExporting;
 }
 
+function isAdminLoading() {
+  return state.loading.adminLoading;
+}
+
 function isCurrentUserAdmin() {
   return state.currentUserMeta?.profile?.role === "ADMIN";
-}
-
-function getCurrentUserProfileUsername() {
-  return slugifyUsername(state.currentUserMeta?.profile?.username);
-}
-
-function isViewingOwnProfile(profile = getActiveProfile()) {
-  if (!profile) {
-    return false;
-  }
-
-  if (!isCurrentUserAdmin()) {
-    return true;
-  }
-
-  return profile.username === getCurrentUserProfileUsername();
-}
-
-function canMutateActiveProfile() {
-  return isViewingOwnProfile();
 }
 
 function isStoppingTimer() {
@@ -371,6 +375,11 @@ function setCreatingProfile(isLoading) {
 function setAdminExporting(isLoading) {
   state.loading.adminExporting = Boolean(isLoading);
   renderAdminExportAction();
+}
+
+function setAdminLoading(isLoading) {
+  state.loading.adminLoading = Boolean(isLoading);
+  renderAdminPanel();
 }
 
 function setStoppingTimer(isLoading) {
@@ -1107,7 +1116,7 @@ function syncUsernameField() {
   const profile = getActiveProfile();
   if (profile) {
     usernameInput.value = profile.username;
-    usernameInput.readOnly = !isCurrentUserAdmin();
+    usernameInput.readOnly = true;
     return;
   }
 
@@ -1147,8 +1156,13 @@ function renderAdminExportAction() {
 
   const isAdmin = isCurrentUserAdmin();
   const isExporting = isAdminExporting();
-  adminExportButton.hidden = !isAdmin;
-  adminExportButton.disabled = isExporting;
+  const isAllMode = isAdmin && state.admin.viewMode === "all";
+  adminExportButton.hidden = !isAllMode;
+  adminExportButton.disabled =
+    !isAllMode ||
+    isExporting ||
+    isAdminLoading() ||
+    state.admin.profiles.length === 0;
   adminExportButton.innerHTML = isExporting
     ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang xuất toàn bộ...</span>'
     : "Xuất Excel toàn bộ";
@@ -1160,25 +1174,48 @@ async function fetchCurrentUserMeta() {
   return state.currentUserMeta;
 }
 
-async function fetchMyProfileFromApi(options = {}) {
-  const { preferCurrentUser = false } = options;
-  const username =
-    slugifyUsername(usernameInput.value) ||
-    slugifyUsername(getActiveProfile()?.username) ||
-    state.suggestedUsername;
-  const currentUsername = getCurrentUserProfileUsername();
+async function fetchAdminMembersFromApi() {
+  const payload = await apiRequest("/api/admin/members");
+  return Array.isArray(payload?.members) ? payload.members : [];
+}
 
-  if (
-    !preferCurrentUser &&
-    isCurrentUserAdmin() &&
-    username &&
-    username !== currentUsername
-  ) {
-    return sanitizeProfile(
-      await apiRequest(`/api/profiles/${encodePath(username)}`),
-      username,
-    );
+async function fetchAdminOtDataFromApi(month = "") {
+  const query = month ? `?month=${encodeURIComponent(month)}` : "";
+  const payload = await apiRequest(`/api/admin/ot-data${query}`);
+  return {
+    month: payload?.month || null,
+    profiles: Array.isArray(payload?.profiles)
+      ? payload.profiles.map((profile) =>
+          sanitizeProfile(profile, profile?.username),
+        )
+      : [],
+  };
+}
+
+function getAdminVisibleProfiles() {
+  if (state.admin.viewMode === "all") {
+    return state.admin.profiles;
   }
+
+  return state.admin.profiles.filter(
+    (profile) => profile.username === state.admin.selectedUsername,
+  );
+}
+
+function getAdminVisibleRows() {
+  return getAdminVisibleProfiles().flatMap((profile) =>
+    sortEntries(profile.entries).map((entry) => ({
+      profile,
+      entry,
+    })),
+  );
+}
+
+async function fetchMyProfileFromApi() {
+  const username =
+    slugifyUsername(getActiveProfile()?.username) ||
+    slugifyUsername(usernameInput.value) ||
+    state.suggestedUsername;
 
   return sanitizeProfile(
     await apiRequestWithFallback(
@@ -1325,44 +1362,31 @@ function getDownloadFileNameFromResponse(response, fallbackFileName) {
 }
 
 async function downloadAdminOtExport(options = {}) {
-  const { retryOnUnauthorized = true } = options;
-  const token = await getAccessToken();
-
-  if (!token) {
-    throw new Error("Không tìm thấy Supabase access token. Hãy đăng nhập lại.");
-  }
-
-  const response = await fetch(`${API_BASE_URL}/api/admin/ot-export`, {
-    method: "GET",
-    headers: {
-      Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (response.status === 401 && retryOnUnauthorized) {
-    const refreshedSession = await refreshSession();
-    if (refreshedSession?.access_token) {
-      return downloadAdminOtExport({ retryOnUnauthorized: false });
-    }
-  }
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    const error = new Error(
-      payload?.message || `Admin export failed with status ${response.status}.`,
+  void options;
+  if (!window.ExcelJS?.Workbook) {
+    toast(
+      "Thiếu thư viện export .xlsx. Hãy tải lại trang rồi thử lại.",
+      "error",
     );
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
+    return;
   }
 
-  const blob = await response.blob();
-  const fileName = getDownloadFileNameFromResponse(
-    response,
-    "otworker-ot-export.xlsx",
+  const { profiles } = await fetchAdminOtDataFromApi(state.admin.month);
+  if (profiles.length === 0) {
+    toast("Không có dữ liệu thành viên để xuất Excel.", "warning");
+    return;
+  }
+
+  const workbook = createAdminOtExportWorkbook(profiles);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const monthSuffix = state.admin.month ? `-${state.admin.month}` : "";
+  triggerDownload(
+    blob,
+    `otworker-all-members${monthSuffix}.xlsx`,
   );
-  triggerDownload(blob, fileName);
 }
 
 function renderProfileList() {
@@ -1395,11 +1419,9 @@ function renderProfileActions() {
   const profile = getActiveProfile();
   const isProfileDeleting = isDeletingProfile(profile?.username);
   const isProfileCreating = isCreatingProfile();
-  const canMutateProfile = canMutateActiveProfile();
   deleteProfileButton.disabled =
-    !profile || !canMutateProfile || isProfileDeleting || isProfileCreating;
-  createProfileButton.disabled =
-    (profile && !canMutateProfile) || isProfileDeleting || isProfileCreating;
+    !profile || isProfileDeleting || isProfileCreating;
+  createProfileButton.disabled = isProfileDeleting || isProfileCreating;
 
   if (isProfileDeleting) {
     deleteProfileButton.innerHTML = `
@@ -1436,12 +1458,10 @@ function renderTimerPanel() {
   const timer = getTimer(profile);
   const hasProfile = Boolean(profile);
   const isTimerStopping = isStoppingTimer();
-  const canMutateProfile = canMutateActiveProfile();
 
-  timerNoteInput.disabled = !hasProfile || !canMutateProfile || isTimerStopping;
-  startTimerButton.disabled =
-    !hasProfile || !canMutateProfile || Boolean(timer) || isTimerStopping;
-  stopTimerButton.disabled = !timer || !canMutateProfile || isTimerStopping;
+  timerNoteInput.disabled = !hasProfile || isTimerStopping;
+  startTimerButton.disabled = !hasProfile || Boolean(timer) || isTimerStopping;
+  stopTimerButton.disabled = !timer || isTimerStopping;
   stopTimerButton.innerHTML = isTimerStopping
     ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang dừng và lưu OT...</span>'
     : "Dừng và lưu OT";
@@ -1487,29 +1507,23 @@ function renderTimerPanel() {
 
 function renderEntryFormState() {
   const isBusy = isSavingEntry();
-  const canMutateProfile = canMutateActiveProfile();
-  const isDisabled = isBusy || !canMutateProfile;
   entryForm.classList.toggle("is-busy", isBusy);
-  entryFields.date.disabled = isDisabled;
-  entryFields.note.disabled = isDisabled;
-  entryFields.startTime.disabled = isDisabled;
-  entryFields.endTime.disabled = isDisabled;
-  resetFormButton.disabled = isDisabled;
+  entryFields.date.disabled = isBusy;
+  entryFields.note.disabled = isBusy;
+  entryFields.startTime.disabled = isBusy;
+  entryFields.endTime.disabled = isBusy;
+  resetFormButton.disabled = isBusy;
 
   const submitButton = entryForm.querySelector('button[type="submit"]');
   if (submitButton) {
-    submitButton.disabled = isDisabled;
+    submitButton.disabled = isBusy;
     submitButton.innerHTML = isBusy
       ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang lưu dòng OT...</span>'
       : "Lưu dòng OT";
   }
 
   timePickerRoots.forEach((root) => {
-    root.classList.toggle("is-disabled", isDisabled);
-  });
-
-  Object.values(employeeFields).forEach((field) => {
-    field.disabled = isDisabled;
+    root.classList.toggle("is-disabled", isBusy);
   });
 
   if (isBusy) {
@@ -1519,7 +1533,6 @@ function renderEntryFormState() {
 
 function renderTable() {
   const rows = sortEntries(filteredEntriesForMonth());
-  const canMutateProfile = canMutateActiveProfile();
 
   entryTableBody.innerHTML = "";
 
@@ -1552,10 +1565,10 @@ function renderTable() {
       <td>${escapeHtml(entry.note || "")}</td>
       <td>
         <div class="row-actions">
-          <button class="edit" data-id="${entry.id}" type="button" ${isRowDeleting || !canMutateProfile ? "disabled" : ""}>
+          <button class="edit" data-id="${entry.id}" type="button" ${isRowDeleting ? "disabled" : ""}>
             <span class="row-action-label">✎ Sửa</span>
           </button>
-          <button class="delete" data-id="${entry.id}" type="button" ${isRowDeleting || !canMutateProfile ? "disabled" : ""}>
+          <button class="delete" data-id="${entry.id}" type="button" ${isRowDeleting ? "disabled" : ""}>
             <span class="row-action-label">${isRowDeleting ? "…" : "⌫"} Xóa</span>
           </button>
         </div>
@@ -1580,16 +1593,185 @@ function renderProfileMeta() {
   }
 
   activeProfileName.textContent = profile.employee.fullName || profile.username;
-  profileHint.textContent = isViewingOwnProfile(profile)
-    ? `Dang hien thi ho so OT cua account dang nhap tren backend ${API_BASE_URL}. JSON export chi dung de backup thu cong.`
-    : `ADMIN dang xem ho so OT "${profile.username}" o che do chi doc. Co the xuat Excel ho so nay hoac xuat Excel toan bo.`;
+  profileHint.textContent = `Dang hien thi duy nhat ho so OT cua account dang nhap tren backend ${API_BASE_URL}. JSON export chi dung de backup thu cong.`;
   syncUsernameField();
+}
+
+function renderAdminMemberOptions() {
+  if (!adminMemberSelect) {
+    return;
+  }
+
+  const currentValue = state.admin.selectedUsername;
+  adminMemberSelect.innerHTML = "";
+
+  if (state.admin.members.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = isAdminLoading()
+      ? "Đang tải danh sách..."
+      : "Chưa có thành viên";
+    adminMemberSelect.append(option);
+    return;
+  }
+
+  state.admin.members.forEach((member) => {
+    const option = document.createElement("option");
+    option.value = member.username;
+    const employeeName = String(member.employee?.fullName ?? "").trim();
+    option.textContent = employeeName
+      ? `${employeeName} (${member.username})`
+      : member.username;
+    adminMemberSelect.append(option);
+  });
+
+  if (
+    currentValue &&
+    state.admin.members.some((member) => member.username === currentValue)
+  ) {
+    adminMemberSelect.value = currentValue;
+  } else {
+    state.admin.selectedUsername = adminMemberSelect.value;
+  }
+}
+
+function renderAdminTable() {
+  if (!adminEntryTableBody) {
+    return;
+  }
+
+  const rows = getAdminVisibleRows();
+  adminEntryTableBody.innerHTML = "";
+
+  if (rows.length === 0) {
+    const tr = document.createElement("tr");
+    const modeLabel =
+      state.admin.viewMode === "all" ? "toàn bộ thành viên" : "thành viên đã chọn";
+    tr.innerHTML = `<td colspan="7" class="empty">Chưa có dữ liệu OT cho ${modeLabel}.</td>`;
+    adminEntryTableBody.append(tr);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  rows.forEach(({ profile, entry }) => {
+    const employee = profile.employee ?? {};
+    const displayName = employee.fullName || profile.username;
+    const weekdayLabel = getWeekdayLabel(entry.date);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(displayName)}</td>
+      <td>${escapeHtml(employee.employeeCode || "")}</td>
+      <td>
+        <span class="date-stack">
+          ${weekdayLabel ? `<span class="weekday-badge">${escapeHtml(weekdayLabel)}</span>` : ""}
+          <span class="date-value">${escapeHtml(entry.date)}</span>
+        </span>
+      </td>
+      <td>${escapeHtml(entry.startTime)}</td>
+      <td>${escapeHtml(entry.endTime)}</td>
+      <td><span class="hours-badge">${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</span></td>
+      <td>${escapeHtml(entry.note || "")}</td>
+    `;
+    fragment.append(tr);
+  });
+  adminEntryTableBody.append(fragment);
+}
+
+function renderAdminSummary() {
+  const profiles = getAdminVisibleProfiles();
+  const rows = getAdminVisibleRows();
+  const totalMinutes = rows.reduce(
+    (sum, { entry }) => sum + minutesBetween(entry.startTime, entry.endTime),
+    0,
+  );
+
+  if (adminMemberCount) {
+    adminMemberCount.textContent = String(profiles.length);
+  }
+  if (adminEntryCount) {
+    adminEntryCount.textContent = String(rows.length);
+  }
+  if (adminTotalHours) {
+    adminTotalHours.textContent = formatDurationMinutes(totalMinutes);
+  }
+
+  if (!adminViewTitle || !adminViewHint) {
+    return;
+  }
+
+  if (!isCurrentUserAdmin()) {
+    adminViewTitle.textContent = "Không có quyền ADMIN";
+    adminViewHint.textContent = "Khu vực này chỉ hiển thị cho account ADMIN.";
+    return;
+  }
+
+  if (state.admin.viewMode === "all") {
+    adminViewTitle.textContent = "Đang xem toàn bộ thành viên";
+    adminViewHint.textContent =
+      state.admin.profiles.length > 0
+        ? "Dữ liệu được lấy từ /api/admin/ot-data. Nút xuất Excel toàn bộ chỉ hiển thị trong chế độ này."
+        : "Bấm Xem OT để tải dữ liệu toàn bộ thành viên.";
+    return;
+  }
+
+  const profile = profiles[0];
+  if (!profile) {
+    adminViewTitle.textContent = "Chưa chọn thành viên";
+    adminViewHint.textContent = "Chọn một thành viên rồi bấm Xem OT.";
+    return;
+  }
+
+  adminViewTitle.textContent = profile.employee.fullName || profile.username;
+  adminViewHint.textContent = `ADMIN đang xem hồ sơ OT "${profile.username}" ở chế độ chỉ đọc.`;
+}
+
+function renderAdminPanel() {
+  if (!adminPanel) {
+    return;
+  }
+
+  const isAdmin = isCurrentUserAdmin();
+  adminPanel.hidden = !isAdmin;
+  if (!isAdmin) {
+    return;
+  }
+
+  if (adminViewMode) {
+    adminViewMode.value = state.admin.viewMode;
+    adminViewMode.disabled = isAdminLoading() || isAdminExporting();
+  }
+  if (adminMemberField) {
+    adminMemberField.hidden = state.admin.viewMode === "all";
+  }
+  if (adminMemberSelect) {
+    adminMemberSelect.disabled =
+      state.admin.viewMode === "all" || isAdminLoading() || isAdminExporting();
+  }
+  if (adminMonthInput) {
+    adminMonthInput.value = state.admin.month;
+    adminMonthInput.disabled = isAdminLoading() || isAdminExporting();
+  }
+  if (adminLoadButton) {
+    adminLoadButton.disabled =
+      isAdminLoading() ||
+      isAdminExporting() ||
+      (state.admin.viewMode === "member" && !state.admin.selectedUsername);
+    adminLoadButton.innerHTML = isAdminLoading()
+      ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang tải OT...</span>'
+      : "Xem OT";
+  }
+
+  renderAdminMemberOptions();
+  renderAdminSummary();
+  renderAdminTable();
+  renderAdminExportAction();
 }
 
 function renderAll() {
   renderProfileList();
   renderProfileMeta();
   renderProfileActions();
+  renderAdminPanel();
   renderAdminExportAction();
   renderEntryFormState();
   renderTimerPanel();
@@ -1760,8 +1942,28 @@ function createOtExportWorkbook(records, employee = {}) {
   const workbook = new window.ExcelJS.Workbook();
   workbook.creator = "OT Tracker";
   workbook.calcProperties.fullCalcOnLoad = true;
+  createOtExportWorksheet(workbook, records, employee);
+
+  return workbook;
+}
+
+function getUniqueWorksheetName(workbook, desiredName) {
+  const baseName = normalizeSheetName(desiredName).slice(0, 31) || DEFAULT_SHEET_NAME;
+  let candidate = baseName;
+  let index = 2;
+
+  while (workbook.getWorksheet(candidate)) {
+    const suffix = ` ${index}`;
+    candidate = `${baseName.slice(0, 31 - suffix.length)}${suffix}`;
+    index += 1;
+  }
+
+  return candidate;
+}
+
+function createOtExportWorksheet(workbook, records, employee = {}) {
   const worksheet = workbook.addWorksheet(
-    normalizeSheetName(employee.sheetName),
+    getUniqueWorksheetName(workbook, employee.sheetName),
     {
       views: [{ state: "frozen", ySplit: 1 }],
     },
@@ -1770,6 +1972,23 @@ function createOtExportWorkbook(records, employee = {}) {
   setOtExportColumnWidths(worksheet);
   writeOtExportHeader(worksheet);
   writeOtExportRows(worksheet, records, employee);
+
+  return worksheet;
+}
+
+function createAdminOtExportWorkbook(profiles) {
+  const workbook = new window.ExcelJS.Workbook();
+  workbook.creator = "OT Tracker";
+  workbook.calcProperties.fullCalcOnLoad = true;
+
+  profiles.forEach((profile) => {
+    const employee = profile.employee ?? {};
+    const records = splitEntriesAcrossMidnight(profile.entries ?? []);
+    createOtExportWorksheet(workbook, records, {
+      ...employee,
+      sheetName: employee.sheetName || profile.username,
+    });
+  });
 
   return workbook;
 }
@@ -1896,9 +2115,59 @@ async function downloadExcel() {
   triggerDownload(blob, `${profile.username}-${month}.xlsx`);
 }
 
+async function loadAdminMembers() {
+  if (!isCurrentUserAdmin()) {
+    return;
+  }
+
+  try {
+    setAdminLoading(true);
+    state.admin.members = await fetchAdminMembersFromApi();
+    if (
+      !state.admin.selectedUsername ||
+      !state.admin.members.some(
+        (member) => member.username === state.admin.selectedUsername,
+      )
+    ) {
+      state.admin.selectedUsername = state.admin.members[0]?.username || "";
+    }
+  } catch (error) {
+    toast(formatRequestError(error, "Không tải được danh sách thành viên."), "error");
+  } finally {
+    setAdminLoading(false);
+  }
+}
+
+async function loadAdminOtData() {
+  if (!isCurrentUserAdmin()) {
+    return;
+  }
+
+  if (state.admin.viewMode === "member" && !state.admin.selectedUsername) {
+    toast("Chọn thành viên trước khi xem OT.", "warning");
+    return;
+  }
+
+  try {
+    setAdminLoading(true);
+    const { profiles } = await fetchAdminOtDataFromApi(state.admin.month);
+    state.admin.profiles =
+      state.admin.viewMode === "all"
+        ? profiles
+        : profiles.filter(
+            (profile) => profile.username === state.admin.selectedUsername,
+          );
+    renderAdminPanel();
+  } catch (error) {
+    toast(formatRequestError(error, "Không tải được dữ liệu OT ADMIN."), "error");
+  } finally {
+    setAdminLoading(false);
+  }
+}
+
 async function openMyProfile(options = {}) {
   try {
-    const profile = await fetchMyProfileFromApi(options);
+    const profile = await fetchMyProfileFromApi();
     mergeProfile(profile);
     setActiveUsername(profile.username);
     if (!options.silent) {
@@ -1948,7 +2217,7 @@ async function createProfile(username) {
 
 function queueProfileSave() {
   const profile = getActiveProfile();
-  if (!profile || !canMutateActiveProfile()) {
+  if (!profile) {
     return;
   }
 
@@ -1970,7 +2239,7 @@ function queueProfileSave() {
 
 async function saveActiveProfile() {
   const profile = getActiveProfile();
-  if (!profile || !canMutateActiveProfile()) {
+  if (!profile) {
     return;
   }
 
@@ -1995,15 +2264,6 @@ async function deleteProfile(username) {
 
 async function importProfileFromFile(file) {
   if (!file) {
-    return;
-  }
-
-  if (!canMutateActiveProfile()) {
-    toast(
-      "ADMIN chỉ được xem hồ sơ nhân viên khác, không nạp JSON vào hồ sơ này.",
-      "warning",
-    );
-    importJsonInput.value = "";
     return;
   }
 
@@ -2063,14 +2323,6 @@ async function importProfileFromFile(file) {
 async function startTimerForActiveProfile() {
   try {
     const profile = requireActiveProfile("bat dau OT");
-    if (!canMutateActiveProfile()) {
-      toast(
-        "ADMIN chỉ được xem hồ sơ nhân viên khác, không bấm giờ OT.",
-        "warning",
-      );
-      return;
-    }
-
     profile.activeTimer = await startTimerInApi(
       profile.username,
       timerNoteInput.value.trim(),
@@ -2089,14 +2341,6 @@ async function stopTimerForActiveProfile() {
 
   try {
     const profile = requireActiveProfile("dung va luu OT");
-    if (!canMutateActiveProfile()) {
-      toast(
-        "ADMIN chỉ được xem hồ sơ nhân viên khác, không dừng timer.",
-        "warning",
-      );
-      return;
-    }
-
     const timer = getTimer(profile);
     if (!timer) {
       toast("Chưa có timer đang chạy để dừng.", "warning");
@@ -2118,7 +2362,7 @@ async function stopTimerForActiveProfile() {
 function queueTimerNoteSave() {
   const profile = getActiveProfile();
   const timer = getTimer(profile);
-  if (!profile || !timer || !canMutateActiveProfile() || isStoppingTimer()) {
+  if (!profile || !timer || isStoppingTimer()) {
     return;
   }
 
@@ -2169,11 +2413,14 @@ async function loadInitialState() {
   }
 
   renderAll();
+  if (isCurrentUserAdmin()) {
+    await loadAdminMembers();
+  }
 
   logApp("Opening profile for signed-in account", {
     suggestedUsername: state.suggestedUsername,
   });
-  const opened = await openMyProfile({ silent: true, preferCurrentUser: true });
+  const opened = await openMyProfile({ silent: true });
   if (!opened) {
     renderProfileMeta();
     logApp("No profile found for signed-in account", {
@@ -2198,7 +2445,7 @@ profileList.addEventListener("click", async (event) => {
 
 employeeForm.addEventListener("input", () => {
   const profile = getActiveProfile();
-  if (!profile || !canMutateActiveProfile()) {
+  if (!profile) {
     return;
   }
 
@@ -2237,14 +2484,6 @@ entryForm.addEventListener("submit", async (event) => {
 
   try {
     const profile = requireActiveProfile("luu dong OT");
-    if (!canMutateActiveProfile()) {
-      toast(
-        "ADMIN chỉ được xem hồ sơ nhân viên khác, không sửa dòng OT.",
-        "warning",
-      );
-      return;
-    }
-
     setSavingEntry(
       true,
       entry.id ? "Đang cập nhật dòng OT..." : "Đang thêm dòng OT mới...",
@@ -2304,14 +2543,6 @@ entryTableBody.addEventListener("click", async (event) => {
 
     try {
       const profile = requireActiveProfile("xoa dong OT");
-      if (!canMutateActiveProfile()) {
-        toast(
-          "ADMIN chỉ được xem hồ sơ nhân viên khác, không xóa dòng OT.",
-          "warning",
-        );
-        return;
-      }
-
       const entry = profile.entries.find(
         (item) => item.id === button.dataset.id,
       );
@@ -2371,7 +2602,7 @@ createProfileButton.addEventListener("click", async () => {
 
 deleteProfileButton.addEventListener("click", async () => {
   const profile = getActiveProfile();
-  if (!profile || !canMutateActiveProfile() || isDeletingProfile(profile.username)) {
+  if (!profile || isDeletingProfile(profile.username)) {
     return;
   }
 
@@ -2437,8 +2668,34 @@ exportButton.addEventListener("click", async () => {
   }
 });
 
+adminViewMode?.addEventListener("change", () => {
+  state.admin.viewMode = adminViewMode.value === "all" ? "all" : "member";
+  state.admin.profiles = [];
+  renderAdminPanel();
+});
+
+adminMemberSelect?.addEventListener("change", () => {
+  state.admin.selectedUsername = adminMemberSelect.value;
+  state.admin.profiles = [];
+  renderAdminPanel();
+});
+
+adminMonthInput?.addEventListener("change", () => {
+  state.admin.month = adminMonthInput.value;
+  state.admin.profiles = [];
+  renderAdminPanel();
+});
+
+adminLoadButton?.addEventListener("click", async () => {
+  await loadAdminOtData();
+});
+
 adminExportButton?.addEventListener("click", async () => {
-  if (!isCurrentUserAdmin() || isAdminExporting()) {
+  if (
+    !isCurrentUserAdmin() ||
+    state.admin.viewMode !== "all" ||
+    isAdminExporting()
+  ) {
     return;
   }
 

@@ -42,7 +42,6 @@
         <div class="hero-actions">
           <button id="saveJsonButton" class="primary">Tải JSON hiện tại</button>
           <button id="exportButton" class="secondary">Xuất Excel .xls</button>
-          <button id="adminExportButton" class="secondary" type="button" hidden>Xuất Excel toàn bộ</button>
           <button id="importJsonButton" class="ghost">Nạp JSON</button>
           <input id="importJsonInput" type="file" accept=".json,application/json" hidden />
         </div>
@@ -53,7 +52,7 @@
       <section class="panel">
         <div class="panel-head">
           <h2>Hồ sơ cá nhân</h2>
-          <p>User thường chỉ xem hồ sơ OT của account hiện tại. ADMIN có thể nhập username thành viên khác để xem hồ sơ.
+          <p>App chỉ hiển thị đúng hồ sơ OT thuộc account hiện tại. Username bên dưới chỉ dùng khi tạo hồ sơ lần đầu.
           </p>
         </div>
         <form id="profileForm" class="stack">
@@ -97,6 +96,74 @@
               <strong id="monthHours">0h</strong>
             </article>
           </div>
+        </div>
+      </section>
+
+      <section id="adminPanel" class="panel panel-wide admin-panel" hidden>
+        <div class="panel-head">
+          <h2>ADMIN - Xem OT thành viên</h2>
+          <p>Chỉ đọc dữ liệu OT của thành viên khác. Các thao tác thêm, xóa, sửa vẫn nằm riêng ở hồ sơ cá nhân.</p>
+        </div>
+        <div class="admin-controls">
+          <label>
+            Chế độ xem
+            <select id="adminViewMode">
+              <option value="member">Một thành viên</option>
+              <option value="all">Toàn bộ thành viên</option>
+            </select>
+          </label>
+          <label id="adminMemberField">
+            Thành viên
+            <select id="adminMemberSelect">
+              <option value="">Đang tải danh sách...</option>
+            </select>
+          </label>
+          <label>
+            Tháng OT
+            <input id="adminMonth" type="month" />
+          </label>
+          <div class="form-actions admin-actions">
+            <button id="adminLoadButton" class="primary" type="button">Xem OT</button>
+            <button id="adminExportButton" class="secondary" type="button" hidden>Xuất Excel toàn bộ</button>
+          </div>
+        </div>
+        <div class="profile-meta admin-meta">
+          <strong id="adminViewTitle">Chưa chọn dữ liệu</strong>
+          <p id="adminViewHint" class="hint">Chọn thành viên hoặc toàn bộ thành viên để xem chi tiết OT.</p>
+        </div>
+        <div class="kpi-row">
+          <article class="kpi">
+            <span>Thành viên</span>
+            <strong id="adminMemberCount">0</strong>
+          </article>
+          <article class="kpi">
+            <span>Dòng OT</span>
+            <strong id="adminEntryCount">0</strong>
+          </article>
+          <article class="kpi">
+            <span>Tổng giờ</span>
+            <strong id="adminTotalHours">0h</strong>
+          </article>
+        </div>
+        <div class="table-wrap admin-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Thành viên</th>
+                <th>MSNV</th>
+                <th>Thứ / Ngày</th>
+                <th>Bắt đầu</th>
+                <th>Kết thúc</th>
+                <th>Tổng giờ</th>
+                <th>Giải trình</th>
+              </tr>
+            </thead>
+            <tbody id="adminEntryTableBody">
+              <tr>
+                <td colspan="7" class="empty">Chưa có dữ liệu ADMIN.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
