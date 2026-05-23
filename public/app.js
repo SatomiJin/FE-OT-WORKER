@@ -304,6 +304,26 @@ function isCurrentUserAdmin() {
   return state.currentUserMeta?.profile?.role === "ADMIN";
 }
 
+function getCurrentUserProfileUsername() {
+  return slugifyUsername(state.currentUserMeta?.profile?.username);
+}
+
+function isViewingOwnProfile(profile = getActiveProfile()) {
+  if (!profile) {
+    return false;
+  }
+
+  if (!isCurrentUserAdmin()) {
+    return true;
+  }
+
+  return profile.username === getCurrentUserProfileUsername();
+}
+
+function canMutateActiveProfile() {
+  return isViewingOwnProfile();
+}
+
 function isStoppingTimer() {
   return state.loading.stoppingTimer;
 }
@@ -1087,7 +1107,7 @@ function syncUsernameField() {
   const profile = getActiveProfile();
   if (profile) {
     usernameInput.value = profile.username;
-    usernameInput.readOnly = true;
+    usernameInput.readOnly = !isCurrentUserAdmin();
     return;
   }
 
@@ -1140,11 +1160,25 @@ async function fetchCurrentUserMeta() {
   return state.currentUserMeta;
 }
 
-async function fetchMyProfileFromApi() {
+async function fetchMyProfileFromApi(options = {}) {
+  const { preferCurrentUser = false } = options;
   const username =
-    slugifyUsername(getActiveProfile()?.username) ||
     slugifyUsername(usernameInput.value) ||
+    slugifyUsername(getActiveProfile()?.username) ||
     state.suggestedUsername;
+  const currentUsername = getCurrentUserProfileUsername();
+
+  if (
+    !preferCurrentUser &&
+    isCurrentUserAdmin() &&
+    username &&
+    username !== currentUsername
+  ) {
+    return sanitizeProfile(
+      await apiRequest(`/api/profiles/${encodePath(username)}`),
+      username,
+    );
+  }
 
   return sanitizeProfile(
     await apiRequestWithFallback(
@@ -1361,9 +1395,11 @@ function renderProfileActions() {
   const profile = getActiveProfile();
   const isProfileDeleting = isDeletingProfile(profile?.username);
   const isProfileCreating = isCreatingProfile();
+  const canMutateProfile = canMutateActiveProfile();
   deleteProfileButton.disabled =
-    !profile || isProfileDeleting || isProfileCreating;
-  createProfileButton.disabled = isProfileDeleting || isProfileCreating;
+    !profile || !canMutateProfile || isProfileDeleting || isProfileCreating;
+  createProfileButton.disabled =
+    (profile && !canMutateProfile) || isProfileDeleting || isProfileCreating;
 
   if (isProfileDeleting) {
     deleteProfileButton.innerHTML = `
@@ -1400,10 +1436,12 @@ function renderTimerPanel() {
   const timer = getTimer(profile);
   const hasProfile = Boolean(profile);
   const isTimerStopping = isStoppingTimer();
+  const canMutateProfile = canMutateActiveProfile();
 
-  timerNoteInput.disabled = !hasProfile || isTimerStopping;
-  startTimerButton.disabled = !hasProfile || Boolean(timer) || isTimerStopping;
-  stopTimerButton.disabled = !timer || isTimerStopping;
+  timerNoteInput.disabled = !hasProfile || !canMutateProfile || isTimerStopping;
+  startTimerButton.disabled =
+    !hasProfile || !canMutateProfile || Boolean(timer) || isTimerStopping;
+  stopTimerButton.disabled = !timer || !canMutateProfile || isTimerStopping;
   stopTimerButton.innerHTML = isTimerStopping
     ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang dừng và lưu OT...</span>'
     : "Dừng và lưu OT";
@@ -1449,23 +1487,29 @@ function renderTimerPanel() {
 
 function renderEntryFormState() {
   const isBusy = isSavingEntry();
+  const canMutateProfile = canMutateActiveProfile();
+  const isDisabled = isBusy || !canMutateProfile;
   entryForm.classList.toggle("is-busy", isBusy);
-  entryFields.date.disabled = isBusy;
-  entryFields.note.disabled = isBusy;
-  entryFields.startTime.disabled = isBusy;
-  entryFields.endTime.disabled = isBusy;
-  resetFormButton.disabled = isBusy;
+  entryFields.date.disabled = isDisabled;
+  entryFields.note.disabled = isDisabled;
+  entryFields.startTime.disabled = isDisabled;
+  entryFields.endTime.disabled = isDisabled;
+  resetFormButton.disabled = isDisabled;
 
   const submitButton = entryForm.querySelector('button[type="submit"]');
   if (submitButton) {
-    submitButton.disabled = isBusy;
+    submitButton.disabled = isDisabled;
     submitButton.innerHTML = isBusy
       ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang lưu dòng OT...</span>'
       : "Lưu dòng OT";
   }
 
   timePickerRoots.forEach((root) => {
-    root.classList.toggle("is-disabled", isBusy);
+    root.classList.toggle("is-disabled", isDisabled);
+  });
+
+  Object.values(employeeFields).forEach((field) => {
+    field.disabled = isDisabled;
   });
 
   if (isBusy) {
@@ -1475,6 +1519,7 @@ function renderEntryFormState() {
 
 function renderTable() {
   const rows = sortEntries(filteredEntriesForMonth());
+  const canMutateProfile = canMutateActiveProfile();
 
   entryTableBody.innerHTML = "";
 
@@ -1507,10 +1552,10 @@ function renderTable() {
       <td>${escapeHtml(entry.note || "")}</td>
       <td>
         <div class="row-actions">
-          <button class="edit" data-id="${entry.id}" type="button" ${isRowDeleting ? "disabled" : ""}>
+          <button class="edit" data-id="${entry.id}" type="button" ${isRowDeleting || !canMutateProfile ? "disabled" : ""}>
             <span class="row-action-label">✎ Sửa</span>
           </button>
-          <button class="delete" data-id="${entry.id}" type="button" ${isRowDeleting ? "disabled" : ""}>
+          <button class="delete" data-id="${entry.id}" type="button" ${isRowDeleting || !canMutateProfile ? "disabled" : ""}>
             <span class="row-action-label">${isRowDeleting ? "…" : "⌫"} Xóa</span>
           </button>
         </div>
@@ -1535,7 +1580,9 @@ function renderProfileMeta() {
   }
 
   activeProfileName.textContent = profile.employee.fullName || profile.username;
-  profileHint.textContent = `Dang hien thi duy nhat ho so OT cua account dang nhap tren backend ${API_BASE_URL}. JSON export chi dung de backup thu cong.`;
+  profileHint.textContent = isViewingOwnProfile(profile)
+    ? `Dang hien thi ho so OT cua account dang nhap tren backend ${API_BASE_URL}. JSON export chi dung de backup thu cong.`
+    : `ADMIN dang xem ho so OT "${profile.username}" o che do chi doc. Co the xuat Excel ho so nay hoac xuat Excel toan bo.`;
   syncUsernameField();
 }
 
@@ -1851,7 +1898,7 @@ async function downloadExcel() {
 
 async function openMyProfile(options = {}) {
   try {
-    const profile = await fetchMyProfileFromApi();
+    const profile = await fetchMyProfileFromApi(options);
     mergeProfile(profile);
     setActiveUsername(profile.username);
     if (!options.silent) {
@@ -1901,7 +1948,7 @@ async function createProfile(username) {
 
 function queueProfileSave() {
   const profile = getActiveProfile();
-  if (!profile) {
+  if (!profile || !canMutateActiveProfile()) {
     return;
   }
 
@@ -1923,7 +1970,7 @@ function queueProfileSave() {
 
 async function saveActiveProfile() {
   const profile = getActiveProfile();
-  if (!profile) {
+  if (!profile || !canMutateActiveProfile()) {
     return;
   }
 
@@ -1948,6 +1995,15 @@ async function deleteProfile(username) {
 
 async function importProfileFromFile(file) {
   if (!file) {
+    return;
+  }
+
+  if (!canMutateActiveProfile()) {
+    toast(
+      "ADMIN chỉ được xem hồ sơ nhân viên khác, không nạp JSON vào hồ sơ này.",
+      "warning",
+    );
+    importJsonInput.value = "";
     return;
   }
 
@@ -2007,6 +2063,14 @@ async function importProfileFromFile(file) {
 async function startTimerForActiveProfile() {
   try {
     const profile = requireActiveProfile("bat dau OT");
+    if (!canMutateActiveProfile()) {
+      toast(
+        "ADMIN chỉ được xem hồ sơ nhân viên khác, không bấm giờ OT.",
+        "warning",
+      );
+      return;
+    }
+
     profile.activeTimer = await startTimerInApi(
       profile.username,
       timerNoteInput.value.trim(),
@@ -2025,6 +2089,14 @@ async function stopTimerForActiveProfile() {
 
   try {
     const profile = requireActiveProfile("dung va luu OT");
+    if (!canMutateActiveProfile()) {
+      toast(
+        "ADMIN chỉ được xem hồ sơ nhân viên khác, không dừng timer.",
+        "warning",
+      );
+      return;
+    }
+
     const timer = getTimer(profile);
     if (!timer) {
       toast("Chưa có timer đang chạy để dừng.", "warning");
@@ -2046,7 +2118,7 @@ async function stopTimerForActiveProfile() {
 function queueTimerNoteSave() {
   const profile = getActiveProfile();
   const timer = getTimer(profile);
-  if (!profile || !timer || isStoppingTimer()) {
+  if (!profile || !timer || !canMutateActiveProfile() || isStoppingTimer()) {
     return;
   }
 
@@ -2101,7 +2173,7 @@ async function loadInitialState() {
   logApp("Opening profile for signed-in account", {
     suggestedUsername: state.suggestedUsername,
   });
-  const opened = await openMyProfile({ silent: true });
+  const opened = await openMyProfile({ silent: true, preferCurrentUser: true });
   if (!opened) {
     renderProfileMeta();
     logApp("No profile found for signed-in account", {
@@ -2126,7 +2198,7 @@ profileList.addEventListener("click", async (event) => {
 
 employeeForm.addEventListener("input", () => {
   const profile = getActiveProfile();
-  if (!profile) {
+  if (!profile || !canMutateActiveProfile()) {
     return;
   }
 
@@ -2165,6 +2237,14 @@ entryForm.addEventListener("submit", async (event) => {
 
   try {
     const profile = requireActiveProfile("luu dong OT");
+    if (!canMutateActiveProfile()) {
+      toast(
+        "ADMIN chỉ được xem hồ sơ nhân viên khác, không sửa dòng OT.",
+        "warning",
+      );
+      return;
+    }
+
     setSavingEntry(
       true,
       entry.id ? "Đang cập nhật dòng OT..." : "Đang thêm dòng OT mới...",
@@ -2224,6 +2304,14 @@ entryTableBody.addEventListener("click", async (event) => {
 
     try {
       const profile = requireActiveProfile("xoa dong OT");
+      if (!canMutateActiveProfile()) {
+        toast(
+          "ADMIN chỉ được xem hồ sơ nhân viên khác, không xóa dòng OT.",
+          "warning",
+        );
+        return;
+      }
+
       const entry = profile.entries.find(
         (item) => item.id === button.dataset.id,
       );
@@ -2283,7 +2371,7 @@ createProfileButton.addEventListener("click", async () => {
 
 deleteProfileButton.addEventListener("click", async () => {
   const profile = getActiveProfile();
-  if (!profile || isDeletingProfile(profile.username)) {
+  if (!profile || !canMutateActiveProfile() || isDeletingProfile(profile.username)) {
     return;
   }
 
