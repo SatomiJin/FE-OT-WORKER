@@ -71,11 +71,13 @@ replayPersistedDebugLogs("app page");
 const state = {
   suggestedUsername: "",
   activeUsername: "",
+  currentUserMeta: null,
   profiles: {},
   profileSaveHandle: 0,
   timerNoteSaveHandle: 0,
   loading: {
     savingEntry: false,
+    adminExporting: false,
     deletingEntryIds: new Set(),
     deletingProfileUsername: "",
     creatingProfile: false,
@@ -94,6 +96,7 @@ const profileList = document.querySelector("#profileList");
 const entryTableBody = document.querySelector("#entryTableBody");
 const saveJsonButton = document.querySelector("#saveJsonButton");
 const exportButton = document.querySelector("#exportButton");
+const adminExportButton = document.querySelector("#adminExportButton");
 const importJsonInput = document.querySelector("#importJsonInput");
 const importJsonButton = document.querySelector("#importJsonButton");
 const resetFormButton = document.querySelector("#resetFormButton");
@@ -293,6 +296,14 @@ function isCreatingProfile() {
   return state.loading.creatingProfile;
 }
 
+function isAdminExporting() {
+  return state.loading.adminExporting;
+}
+
+function isCurrentUserAdmin() {
+  return state.currentUserMeta?.profile?.role === "ADMIN";
+}
+
 function isStoppingTimer() {
   return state.loading.stoppingTimer;
 }
@@ -335,6 +346,11 @@ function setDeletingProfile(username, isLoading) {
 function setCreatingProfile(isLoading) {
   state.loading.creatingProfile = Boolean(isLoading);
   renderProfileActions();
+}
+
+function setAdminExporting(isLoading) {
+  state.loading.adminExporting = Boolean(isLoading);
+  renderAdminExportAction();
 }
 
 function setStoppingTimer(isLoading) {
@@ -1104,6 +1120,26 @@ function renderAuthSession(session) {
   }
 }
 
+function renderAdminExportAction() {
+  if (!adminExportButton) {
+    return;
+  }
+
+  const isAdmin = isCurrentUserAdmin();
+  const isExporting = isAdminExporting();
+  adminExportButton.hidden = !isAdmin;
+  adminExportButton.disabled = isExporting;
+  adminExportButton.innerHTML = isExporting
+    ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang xuất toàn bộ...</span>'
+    : "Xuất Excel toàn bộ";
+}
+
+async function fetchCurrentUserMeta() {
+  state.currentUserMeta = await apiRequest("/api/me");
+  renderAdminExportAction();
+  return state.currentUserMeta;
+}
+
 async function fetchMyProfileFromApi() {
   const username =
     slugifyUsername(getActiveProfile()?.username) ||
@@ -1238,6 +1274,61 @@ async function stopTimerInApi(username, note) {
       },
     ),
   );
+}
+
+function getDownloadFileNameFromResponse(response, fallbackFileName) {
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1].replace(/^"|"$/g, ""));
+  }
+
+  return (
+    disposition.match(/filename="([^"]+)"/i)?.[1] ||
+    disposition.match(/filename=([^;]+)/i)?.[1]?.trim().replace(/^"|"$/g, "") ||
+    fallbackFileName
+  );
+}
+
+async function downloadAdminOtExport(options = {}) {
+  const { retryOnUnauthorized = true } = options;
+  const token = await getAccessToken();
+
+  if (!token) {
+    throw new Error("Không tìm thấy Supabase access token. Hãy đăng nhập lại.");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/admin/ot-export`, {
+    method: "GET",
+    headers: {
+      Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 401 && retryOnUnauthorized) {
+    const refreshedSession = await refreshSession();
+    if (refreshedSession?.access_token) {
+      return downloadAdminOtExport({ retryOnUnauthorized: false });
+    }
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const error = new Error(
+      payload?.message || `Admin export failed with status ${response.status}.`,
+    );
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  const blob = await response.blob();
+  const fileName = getDownloadFileNameFromResponse(
+    response,
+    "otworker-ot-export.xlsx",
+  );
+  triggerDownload(blob, fileName);
 }
 
 function renderProfileList() {
@@ -1452,6 +1543,7 @@ function renderAll() {
   renderProfileList();
   renderProfileMeta();
   renderProfileActions();
+  renderAdminExportAction();
   renderEntryFormState();
   renderTimerPanel();
   renderTable();
@@ -1991,6 +2083,18 @@ async function loadInitialState() {
   });
   state.suggestedUsername = getSuggestedUsernameFromSession(session);
   renderAuthSession(session);
+  try {
+    await fetchCurrentUserMeta();
+  } catch (error) {
+    state.currentUserMeta = null;
+    renderAdminExportAction();
+    if (error?.status !== 404) {
+      toast(
+        formatRequestError(error, "Không kiểm tra được quyền admin."),
+        "warning",
+      );
+    }
+  }
 
   renderAll();
 
@@ -2242,6 +2346,25 @@ exportButton.addEventListener("click", async () => {
     await downloadExcel();
   } catch (error) {
     toast(formatRequestError(error, "Không xuất được file Excel."), "error");
+  }
+});
+
+adminExportButton?.addEventListener("click", async () => {
+  if (!isCurrentUserAdmin() || isAdminExporting()) {
+    return;
+  }
+
+  try {
+    setAdminExporting(true);
+    await downloadAdminOtExport();
+    toast("Đã xuất file Excel toàn bộ OT.", "success");
+  } catch (error) {
+    toast(
+      formatRequestError(error, "Không xuất được Excel toàn bộ OT."),
+      error?.status === 403 ? "warning" : "error",
+    );
+  } finally {
+    setAdminExporting(false);
   }
 });
 
