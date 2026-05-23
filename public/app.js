@@ -1356,7 +1356,10 @@ function getDownloadFileNameFromResponse(response, fallbackFileName) {
 
   return (
     disposition.match(/filename="([^"]+)"/i)?.[1] ||
-    disposition.match(/filename=([^;]+)/i)?.[1]?.trim().replace(/^"|"$/g, "") ||
+    disposition
+      .match(/filename=([^;]+)/i)?.[1]
+      ?.trim()
+      .replace(/^"|"$/g, "") ||
     fallbackFileName
   );
 }
@@ -1383,10 +1386,7 @@ async function downloadAdminOtExport(options = {}) {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const monthSuffix = state.admin.month ? `-${state.admin.month}` : "";
-  triggerDownload(
-    blob,
-    `otworker-all-members${monthSuffix}.xlsx`,
-  );
+  triggerDownload(blob, `otworker-all-members${monthSuffix}.xlsx`);
 }
 
 function renderProfileList() {
@@ -1646,7 +1646,9 @@ function renderAdminTable() {
   if (rows.length === 0) {
     const tr = document.createElement("tr");
     const modeLabel =
-      state.admin.viewMode === "all" ? "toàn bộ thành viên" : "thành viên đã chọn";
+      state.admin.viewMode === "all"
+        ? "toàn bộ thành viên"
+        : "thành viên đã chọn";
     tr.innerHTML = `<td colspan="7" class="empty">Chưa có dữ liệu OT cho ${modeLabel}.</td>`;
     adminEntryTableBody.append(tr);
     return;
@@ -1948,7 +1950,8 @@ function createOtExportWorkbook(records, employee = {}) {
 }
 
 function getUniqueWorksheetName(workbook, desiredName) {
-  const baseName = normalizeSheetName(desiredName).slice(0, 31) || DEFAULT_SHEET_NAME;
+  const baseName =
+    normalizeSheetName(desiredName).slice(0, 31) || DEFAULT_SHEET_NAME;
   let candidate = baseName;
   let index = 2;
 
@@ -2132,7 +2135,10 @@ async function loadAdminMembers() {
       state.admin.selectedUsername = state.admin.members[0]?.username || "";
     }
   } catch (error) {
-    toast(formatRequestError(error, "Không tải được danh sách thành viên."), "error");
+    toast(
+      formatRequestError(error, "Không tải được danh sách thành viên."),
+      "error",
+    );
   } finally {
     setAdminLoading(false);
   }
@@ -2159,7 +2165,10 @@ async function loadAdminOtData() {
           );
     renderAdminPanel();
   } catch (error) {
-    toast(formatRequestError(error, "Không tải được dữ liệu OT ADMIN."), "error");
+    toast(
+      formatRequestError(error, "Không tải được dữ liệu OT ADMIN."),
+      "error",
+    );
   } finally {
     setAdminLoading(false);
   }
