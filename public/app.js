@@ -1169,12 +1169,14 @@ function renderAdminExportAction() {
   const isAdmin = isCurrentUserAdmin();
   const isExporting = isAdminExporting();
   const isAllMode = isAdmin && state.admin.viewMode === "all";
+  const hasExportSource =
+    state.admin.profiles.length > 0 || state.admin.members.length > 0;
   adminExportButton.hidden = !isAllMode;
   adminExportButton.disabled =
     !isAllMode ||
     isExporting ||
     isAdminLoading() ||
-    state.admin.profiles.length === 0;
+    !hasExportSource;
   adminExportButton.innerHTML = isExporting
     ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang xuất toàn bộ...</span>'
     : "Xuất Excel toàn bộ";
@@ -1188,13 +1190,73 @@ async function fetchCurrentUserMeta() {
 
 async function fetchAdminMembersFromApi() {
   const payload = await apiRequest("/api/admin/members");
-  if (Array.isArray(payload?.members)) {
-    return payload.members;
+  const members = Array.isArray(payload?.members)
+    ? payload.members
+    : Array.isArray(payload?.data?.members)
+      ? payload.data.members
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload)
+          ? payload
+          : [];
+
+  return members
+    .map((member) => ({
+      ...member,
+      username: slugifyUsername(
+        member?.username ??
+          member?.profile?.username ??
+          member?.account?.username ??
+          member?.user?.username,
+      ),
+    }))
+    .filter((member) => member.username);
+}
+
+function getProfilesFromAdminPayload(payload) {
+  const profiles = Array.isArray(payload?.profiles)
+    ? payload.profiles
+    : Array.isArray(payload?.data?.profiles)
+      ? payload.data.profiles
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload)
+          ? payload
+          : [];
+
+  return profiles
+    .map((profile) => sanitizeProfile(profile, profile?.username))
+    .filter((profile) => profile.username);
+}
+
+function mergeProfilesByUsername(...profileLists) {
+  const merged = new Map();
+  profileLists.flat().forEach((profile) => {
+    const normalizedProfile = sanitizeProfile(profile, profile?.username);
+    if (normalizedProfile.username) {
+      merged.set(normalizedProfile.username, normalizedProfile);
+    }
+  });
+
+  return [...merged.values()];
+}
+
+function getAdminMemberUsernames() {
+  return [
+    ...new Set(
+      state.admin.members
+        .map((member) => slugifyUsername(member?.username))
+        .filter(Boolean),
+    ),
+  ];
+}
+
+async function ensureAdminMembersLoaded() {
+  if (!isCurrentUserAdmin() || state.admin.members.length > 0) {
+    return;
   }
-  if (Array.isArray(payload?.data)) {
-    return payload.data;
-  }
-  return Array.isArray(payload) ? payload : [];
+
+  state.admin.members = await fetchAdminMembersFromApi();
 }
 
 async function fetchAdminOtDataFromApi(month = "") {
@@ -1202,11 +1264,7 @@ async function fetchAdminOtDataFromApi(month = "") {
   const payload = await apiRequest(`/api/admin/ot-data${query}`);
   return {
     month: payload?.month || null,
-    profiles: Array.isArray(payload?.profiles)
-      ? payload.profiles.map((profile) =>
-          sanitizeProfile(profile, profile?.username),
-        )
-      : [],
+    profiles: getProfilesFromAdminPayload(payload),
   };
 }
 
@@ -1242,6 +1300,71 @@ async function fetchMyProfileFromApi() {
     ),
     username || state.suggestedUsername,
   );
+}
+
+async function fetchProfileByUsernameFromApi(username) {
+  const normalizedUsername = slugifyUsername(username);
+  if (!normalizedUsername) {
+    throw new Error("Thiếu username để tải hồ sơ.");
+  }
+
+  return sanitizeProfile(
+    await apiRequest(`/api/profiles/${encodePath(normalizedUsername)}`),
+    normalizedUsername,
+  );
+}
+
+async function fetchAdminProfileByUsernameFromApi(username) {
+  const normalizedUsername = slugifyUsername(username);
+  if (!normalizedUsername) {
+    throw new Error("Thiếu username để tải hồ sơ.");
+  }
+
+  const profile = sanitizeProfile(
+    await apiRequestWithFallback(
+      `/api/admin/profiles/${encodePath(normalizedUsername)}`,
+      `/api/profiles/${encodePath(normalizedUsername)}`,
+    ),
+    normalizedUsername,
+  );
+
+  if (profile.username !== normalizedUsername) {
+    throw new Error(
+      `API trả về hồ sơ "${profile.username}" thay vì "${normalizedUsername}".`,
+    );
+  }
+
+  return profile;
+}
+
+async function fetchExpandedAdminProfiles(month = "") {
+  await ensureAdminMembersLoaded();
+
+  const payload = await fetchAdminOtDataFromApi(month);
+  let profiles = mergeProfilesByUsername(payload.profiles);
+  const memberUsernames = getAdminMemberUsernames();
+
+  if (profiles.length <= 1 && memberUsernames.length > profiles.length) {
+    const fetchedProfiles = (
+      await Promise.all(
+        memberUsernames.map(async (username) => {
+          try {
+            return await fetchAdminProfileByUsernameFromApi(username);
+          } catch (error) {
+            console.error(`${API_LOG_PREFIX} Admin profile fallback failed`, {
+              username,
+              error,
+            });
+            return null;
+          }
+        }),
+      )
+    ).filter(Boolean);
+
+    profiles = mergeProfilesByUsername(profiles, fetchedProfiles);
+  }
+
+  return profiles;
 }
 
 async function createProfileInApi(username) {
@@ -1392,19 +1515,24 @@ async function downloadAdminOtExport(options = {}) {
     return;
   }
 
-  let profiles =
-    state.admin.viewMode === "all"
-      ? state.admin.profiles
-      : getAdminVisibleProfiles();
+  let profiles = [];
 
-  if (profiles.length === 0) {
-    const payload = await fetchAdminOtDataFromApi(state.admin.month);
-    profiles =
-      state.admin.viewMode === "all"
-        ? payload.profiles
-        : payload.profiles.filter(
-            (profile) => profile.username === state.admin.selectedUsername,
-          );
+  if (state.admin.viewMode === "all") {
+    profiles = await fetchExpandedAdminProfiles(state.admin.month);
+  } else {
+    profiles = getAdminVisibleProfiles();
+
+    if (profiles.length === 0) {
+      const payload = await fetchAdminOtDataFromApi(state.admin.month);
+      profiles = payload.profiles.filter(
+        (profile) => profile.username === state.admin.selectedUsername,
+      );
+    }
+  }
+
+  if (state.admin.viewMode === "all" && profiles.length > 0) {
+    state.admin.profiles = profiles;
+    renderAdminPanel();
   }
 
   if (profiles.length === 0) {
@@ -2188,13 +2316,16 @@ async function loadAdminOtData() {
 
   try {
     setAdminLoading(true);
-    const { profiles } = await fetchAdminOtDataFromApi(state.admin.month);
-    state.admin.profiles =
-      state.admin.viewMode === "all"
-        ? profiles
-        : profiles.filter(
-            (profile) => profile.username === state.admin.selectedUsername,
-          );
+    if (state.admin.viewMode === "all") {
+      state.admin.profiles = await fetchExpandedAdminProfiles(
+        state.admin.month,
+      );
+    } else {
+      const { profiles } = await fetchAdminOtDataFromApi(state.admin.month);
+      state.admin.profiles = profiles.filter(
+        (profile) => profile.username === state.admin.selectedUsername,
+      );
+    }
     renderAdminPanel();
   } catch (error) {
     toast(
