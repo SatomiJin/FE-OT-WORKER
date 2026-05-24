@@ -1392,7 +1392,21 @@ async function downloadAdminOtExport(options = {}) {
     return;
   }
 
-  const { profiles } = await fetchAdminOtDataFromApi(state.admin.month);
+  let profiles =
+    state.admin.viewMode === "all"
+      ? state.admin.profiles
+      : getAdminVisibleProfiles();
+
+  if (profiles.length === 0) {
+    const payload = await fetchAdminOtDataFromApi(state.admin.month);
+    profiles =
+      state.admin.viewMode === "all"
+        ? payload.profiles
+        : payload.profiles.filter(
+            (profile) => profile.username === state.admin.selectedUsername,
+          );
+  }
+
   if (profiles.length === 0) {
     toast("Không có dữ liệu thành viên để xuất Excel.", "warning");
     return;
