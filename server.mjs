@@ -77,12 +77,54 @@ function pickFirstNonEmpty(...values) {
   return "";
 }
 
+function trimTrailingSlash(value) {
+  return String(value ?? "").replace(/\/+$/, "");
+}
+
+async function readRequestBody(request) {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(chunk);
+  }
+  return chunks.length > 0 ? Buffer.concat(chunks) : undefined;
+}
+
+function createProxyHeaders(request) {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (
+      ["connection", "content-length", "host", "transfer-encoding"].includes(
+        name.toLowerCase(),
+      )
+    ) {
+      continue;
+    }
+    headers.set(name, Array.isArray(value) ? value.join(",") : String(value));
+  }
+  return headers;
+}
+
+function createResponseHeaders(upstreamResponse) {
+  const headers = {};
+  upstreamResponse.headers.forEach((value, name) => {
+    if (
+      ["content-encoding", "content-length", "transfer-encoding"].includes(
+        name.toLowerCase(),
+      )
+    ) {
+      return;
+    }
+    headers[name] = value;
+  });
+  return headers;
+}
+
 async function serveAuthConfig(response) {
   const env = await readEnvFile();
   const authConfig = {
     supabaseUrl: pickFirstNonEmpty(env.SUPABASEURL),
     supabaseAnonKey: pickFirstNonEmpty(env.SUPABASEANONKEY),
-    apiBaseUrl: pickFirstNonEmpty(env.APIBASEURL),
+    apiBaseUrl: "",
     loginPath: pickFirstNonEmpty(env.LOGINPATH, "/login.html"),
     appPath: pickFirstNonEmpty(env.APPPATH, "/"),
   };
@@ -94,6 +136,36 @@ async function serveAuthConfig(response) {
   );
 }
 
+async function proxyApiRequest(request, response, requestUrl) {
+  const env = await readEnvFile();
+  const apiBaseUrl = trimTrailingSlash(env.APIBASEURL);
+  if (!apiBaseUrl) {
+    sendJson(response, 502, {
+      error: "Missing APIBASEURL in .env for local API proxy.",
+    });
+    return;
+  }
+
+  const targetUrl = new URL(
+    `${requestUrl.pathname}${requestUrl.search}`,
+    `${apiBaseUrl}/`,
+  );
+  const upstreamResponse = await fetch(targetUrl, {
+    method: request.method,
+    headers: createProxyHeaders(request),
+    body: ["GET", "HEAD"].includes(request.method ?? "")
+      ? undefined
+      : await readRequestBody(request),
+  });
+  const body = Buffer.from(await upstreamResponse.arrayBuffer());
+  response.writeHead(
+    upstreamResponse.status,
+    upstreamResponse.statusText,
+    createResponseHeaders(upstreamResponse),
+  );
+  response.end(body);
+}
+
 async function serveStatic(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
 
@@ -102,6 +174,11 @@ async function serveStatic(request, response) {
     requestUrl.pathname === "/api/auth-config.js"
   ) {
     await serveAuthConfig(response);
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/api/")) {
+    await proxyApiRequest(request, response, requestUrl);
     return;
   }
 

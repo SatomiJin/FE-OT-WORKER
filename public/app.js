@@ -324,8 +324,20 @@ function isAdminLoading() {
   return state.loading.adminLoading;
 }
 
+function getCurrentUserRole() {
+  const meta = state.currentUserMeta ?? {};
+  const role =
+    meta.profile?.role ??
+    meta.role ??
+    meta.user?.role ??
+    meta.member?.role ??
+    meta.account?.role ??
+    "";
+  return String(role).trim().toUpperCase();
+}
+
 function isCurrentUserAdmin() {
-  return state.currentUserMeta?.profile?.role === "ADMIN";
+  return getCurrentUserRole() === "ADMIN";
 }
 
 function isStoppingTimer() {
@@ -1176,7 +1188,13 @@ async function fetchCurrentUserMeta() {
 
 async function fetchAdminMembersFromApi() {
   const payload = await apiRequest("/api/admin/members");
-  return Array.isArray(payload?.members) ? payload.members : [];
+  if (Array.isArray(payload?.members)) {
+    return payload.members;
+  }
+  if (Array.isArray(payload?.data)) {
+    return payload.data;
+  }
+  return Array.isArray(payload) ? payload : [];
 }
 
 async function fetchAdminOtDataFromApi(month = "") {
