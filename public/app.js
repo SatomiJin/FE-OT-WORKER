@@ -2144,14 +2144,24 @@ function createAdminOtExportWorkbook(profiles) {
   workbook.creator = "OT Tracker";
   workbook.calcProperties.fullCalcOnLoad = true;
 
-  profiles.forEach((profile) => {
+  const worksheet = workbook.addWorksheet(
+    getUniqueWorksheetName(workbook, "All members"),
+    {
+      views: [{ state: "frozen", ySplit: 1 }],
+    },
+  );
+
+  const records = profiles.flatMap((profile) => {
     const employee = profile.employee ?? {};
-    const records = splitEntriesAcrossMidnight(profile.entries ?? []);
-    createOtExportWorksheet(workbook, records, {
-      ...employee,
-      sheetName: employee.sheetName || profile.username,
-    });
+    return splitEntriesAcrossMidnight(profile.entries ?? []).map((entry) => ({
+      entry,
+      employee,
+    }));
   });
+
+  setOtExportColumnWidths(worksheet);
+  writeOtExportHeader(worksheet);
+  writeAdminOtExportRows(worksheet, records);
 
   return workbook;
 }
@@ -2203,6 +2213,37 @@ function writeOtExportRows(worksheet, records, employee) {
   normalizedRecords.forEach((record, index) => {
     const rowNumber = index + 2;
     const row = worksheet.getRow(rowNumber);
+
+    row.getCell(1).value = "DEMO";
+    row.getCell(2).value = employeeCode;
+    row.getCell(3).value = employeeName;
+    row.getCell(4).value = "";
+    row.getCell(5).value = record.date;
+    row.getCell(6).value = record.startTimeSerial;
+    row.getCell(7).value = record.endTimeSerial;
+    row.getCell(8).value = {
+      formula: `SUBSTITUTE(TEXT(MOD(G${rowNumber}-F${rowNumber},1)*24,"0.00"),",",".")`,
+      result: formatOtHoursForExport(record.totalHours),
+    };
+    row.getCell(9).value = record.note;
+
+    applyOtExportDataStyles(row);
+  });
+}
+
+function writeAdminOtExportRows(worksheet, records) {
+  const normalizedRecords = records
+    .map(({ entry, employee }) => ({
+      record: normalizeOtExportRecord(entry),
+      employee: employee ?? {},
+    }))
+    .filter(({ record }) => record);
+
+  normalizedRecords.forEach(({ record, employee }, index) => {
+    const rowNumber = index + 2;
+    const row = worksheet.getRow(rowNumber);
+    const employeeCode = String(employee.employeeCode ?? "").trim();
+    const employeeName = String(employee.fullName ?? "").trim();
 
     row.getCell(1).value = "DEMO";
     row.getCell(2).value = employeeCode;
