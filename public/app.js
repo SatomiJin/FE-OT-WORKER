@@ -951,6 +951,21 @@ function syncStateFromEmployeeForm() {
   };
 }
 
+function getRequiredFullNameForProfileCreation() {
+  const fullName = employeeFields.fullName.value.trim();
+  employeeFields.fullName.setCustomValidity(
+    fullName ? "" : "Vui lòng nhập họ và tên trước khi tạo hồ sơ OT.",
+  );
+  if (!fullName) {
+    employeeFields.fullName.reportValidity();
+    employeeFields.fullName.focus();
+    toast("Nhập họ và tên trước khi tạo hồ sơ OT.", "warning");
+    return "";
+  }
+
+  return fullName;
+}
+
 function serializeProfile(profile) {
   return {
     username: profile.username,
@@ -2402,7 +2417,7 @@ async function openMyProfile(options = {}) {
   }
 }
 
-async function createProfile(username) {
+async function createProfile(username, fullName) {
   const normalized = slugifyUsername(username) || state.suggestedUsername;
   if (!normalized) {
     toast("Nhập username trước khi tạo hồ sơ.", "warning");
@@ -2412,9 +2427,11 @@ async function createProfile(username) {
   try {
     setCreatingProfile(true);
     const profile = await createProfileInApi(normalized);
-    mergeProfile(profile);
-    setActiveUsername(profile.username);
-    toast(`Đã tạo hồ sơ "${profile.username}" thành công.`, "success");
+    profile.employee.fullName = fullName;
+    const updatedProfile = await updateProfileInApi(profile);
+    mergeProfile(updatedProfile);
+    setActiveUsername(updatedProfile.username);
+    toast(`Đã tạo hồ sơ "${updatedProfile.username}" thành công.`, "success");
     return true;
   } catch (error) {
     if (error.status === 409) {
@@ -2657,6 +2674,10 @@ profileList.addEventListener("click", async (event) => {
 });
 
 employeeForm.addEventListener("input", () => {
+  if (employeeFields.fullName.value.trim()) {
+    employeeFields.fullName.setCustomValidity("");
+  }
+
   const profile = getActiveProfile();
   if (!profile) {
     return;
@@ -2810,7 +2831,12 @@ saveJsonButton.addEventListener("click", async () => {
 });
 
 createProfileButton.addEventListener("click", async () => {
-  await createProfile(usernameInput.value);
+  const fullName = getRequiredFullNameForProfileCreation();
+  if (!fullName) {
+    return;
+  }
+
+  await createProfile(usernameInput.value, fullName);
 });
 
 deleteProfileButton.addEventListener("click", async () => {
