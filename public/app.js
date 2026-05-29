@@ -102,7 +102,6 @@ const entryFormOverlayText = document.querySelector("#entryFormOverlayText");
 const exportMonthInput = document.querySelector("#exportMonth");
 const profileList = document.querySelector("#profileList");
 const entryTableBody = document.querySelector("#entryTableBody");
-const entryCardList = document.querySelector("#entryCardList");
 const saveJsonButton = document.querySelector("#saveJsonButton");
 const exportButton = document.querySelector("#exportButton");
 const adminExportButton = document.querySelector("#adminExportButton");
@@ -1707,54 +1706,6 @@ function renderEntryFormState() {
   }
 }
 
-function renderCardList(rows) {
-  if (!entryCardList) return;
-  entryCardList.innerHTML = "";
-
-  if (rows.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.style.textAlign = "center";
-    empty.style.padding = "36px 0";
-    empty.textContent = "Chưa có dữ liệu OT cho username này. Thêm dòng đầu tiên ở form phía trên.";
-    entryCardList.append(empty);
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-  rows.forEach((entry) => {
-    const isDeleting = isDeletingEntry(entry.id);
-    const weekdayLabel = getWeekdayLabel(entry.date);
-    const hours = formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime));
-
-    const card = document.createElement("article");
-    card.className = "ot-card" + (isDeleting ? " is-loading" : "");
-    card.innerHTML = `
-      <div class="ot-card-header">
-        <div class="ot-card-date">
-          ${weekdayLabel ? `<span class="weekday-badge">${escapeHtml(weekdayLabel)}</span>` : ""}
-          <span class="date-value">${escapeHtml(entry.date)}</span>
-        </div>
-        <span class="ot-card-hours hours-badge">${hours}</span>
-      </div>
-      <div class="ot-card-times">
-        <span>${entry.startTime}</span>
-        <span class="arrow">→</span>
-        <span>${entry.endTime}</span>
-      </div>
-      ${entry.note ? `<p class="ot-card-note">${escapeHtml(entry.note)}</p>` : ""}
-      <div class="ot-card-actions">
-        <button class="edit" data-id="${entry.id}" type="button" ${isDeleting ? "disabled" : ""}>✎ Sửa</button>
-        <button class="delete" data-id="${entry.id}" type="button" ${isDeleting ? "disabled" : ""}>
-          ${isDeleting ? '<span class="loading-spinner" aria-hidden="true"></span> Đang xóa…' : "⌫ Xóa"}
-        </button>
-      </div>
-    `;
-    fragment.append(card);
-  });
-  entryCardList.append(fragment);
-}
-
 function renderTable() {
   const rows = sortEntries(filteredEntriesForMonth());
 
@@ -1762,7 +1713,6 @@ function renderTable() {
 
   if (rows.length === 0) {
     entryTableBody.append(emptyStateTemplate.content.cloneNode(true));
-    renderCardList([]);
     renderStats();
     renderJsonPreview();
     return;
@@ -1802,7 +1752,6 @@ function renderTable() {
     fragment.append(tr);
   });
   entryTableBody.append(fragment);
-  renderCardList(rows);
 
   renderStats();
   renderJsonPreview();
@@ -2798,32 +2747,55 @@ entryForm.addEventListener("submit", async (event) => {
   }
 });
 
-async function handleEntryAction(event) {
+entryTableBody.addEventListener("click", async (event) => {
   const button = event.target.closest("button");
-  if (!button) return;
+  if (!button) {
+    return;
+  }
 
   if (button.classList.contains("edit")) {
-    if (isDeletingEntry(button.dataset.id) || isSavingEntry()) return;
+    if (isDeletingEntry(button.dataset.id) || isSavingEntry()) {
+      return;
+    }
+
     const profile = getActiveProfile();
-    const entry = profile?.entries.find((item) => item.id === button.dataset.id);
-    if (!entry) return;
+    const entry = profile?.entries.find(
+      (item) => item.id === button.dataset.id,
+    );
+    if (!entry) {
+      return;
+    }
     fillEntryForm(entry);
     entryForm.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
 
   if (button.classList.contains("delete")) {
-    if (isDeletingEntry(button.dataset.id)) return;
+    if (isDeletingEntry(button.dataset.id)) {
+      return;
+    }
+
     try {
       const profile = requireActiveProfile("xoa dong OT");
-      const entry = profile.entries.find((item) => item.id === button.dataset.id);
+      const entry = profile.entries.find(
+        (item) => item.id === button.dataset.id,
+      );
       if (!entry) {
-        toast("Không tìm thấy dòng OT cần xóa trong dữ liệu hiện tại.", "error");
+        toast(
+          "Không tìm thấy dòng OT cần xóa trong dữ liệu hiện tại.",
+          "error",
+        );
         return;
       }
-      if (!toastConfirm(`Xóa dòng OT ngày ${entry.date} (${entry.startTime} – ${entry.endTime})?`)) {
+
+      if (
+        !toastConfirm(
+          `Xóa dòng OT ngày ${entry.date} (${entry.startTime} – ${entry.endTime})?`,
+        )
+      ) {
         return;
       }
+
       setDeletingEntry(entry.id, true);
       await deleteEntryInApi(profile.username, entry.id);
       await openMyProfile({ silent: true });
@@ -2835,10 +2807,7 @@ async function handleEntryAction(event) {
       setDeletingEntry(button.dataset.id, false);
     }
   }
-}
-
-entryTableBody.addEventListener("click", handleEntryAction);
-if (entryCardList) entryCardList.addEventListener("click", handleEntryAction);
+});
 
 timerNoteInput.addEventListener("input", () => {
   queueTimerNoteSave();

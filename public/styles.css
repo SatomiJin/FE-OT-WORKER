@@ -1037,98 +1037,6 @@ tbody tr.is-loading td {
   font-size: 0.85rem;
 }
 
-/* ── Mobile card list (replaces table on small screens) ── */
-.ot-card-list {
-  display: none;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.ot-card {
-  padding: 16px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  background: var(--meta-bg);
-  display: grid;
-  gap: 10px;
-  transition: box-shadow var(--transition);
-}
-
-.ot-card:hover {
-  box-shadow: var(--shadow-sm);
-}
-
-.ot-card.is-loading {
-  opacity: 0.7;
-}
-
-.ot-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.ot-card-date {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ot-card-hours {
-  flex-shrink: 0;
-}
-
-.ot-card-times {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.95rem;
-  color: var(--text-sub);
-  font-weight: 600;
-}
-
-.ot-card-times .arrow {
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.ot-card-note {
-  font-size: 0.88rem;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.ot-card-note:empty {
-  display: none;
-}
-
-.ot-card-actions {
-  display: flex;
-  gap: 8px;
-  padding-top: 4px;
-  border-top: 1px solid var(--line);
-}
-
-.ot-card-actions button {
-  flex: 1;
-  padding: 8px 12px;
-  font-size: 0.85rem;
-  min-height: 40px;
-}
-
-/* Admin card list */
-.ot-card--admin {
-  gap: 8px;
-}
-
-.ot-card-member {
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--secondary);
-}
 
 /* ── JSON preview ── */
 .json-preview {
@@ -1515,31 +1423,10 @@ tbody tr.is-loading td {
     font-size: 1.7rem;
   }
 
-  /* Switch table to card list */
-  .table-wrap table {
-    display: none;
-  }
-
-  .ot-card-list {
-    display: flex;
-  }
-
+  /* Both tables scroll horizontally on mobile */
   .table-wrap {
-    border: none;
-    border-radius: 0;
-    background: transparent;
-    overflow: visible;
-  }
-
-  /* Admin table stays scrollable (more columns) */
-  .admin-table-wrap table {
-    display: table;
-  }
-
-  .admin-table-wrap {
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .table-scroll-hint {
