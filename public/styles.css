@@ -111,8 +111,15 @@
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
+  /* Ngăn page scroll ngang nhưng không ảnh hưởng overflow-x: auto của con */
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+body {
   min-height: 100vh;
   font-family: "Inter", "Segoe UI", "Trebuchet MS", sans-serif;
   font-size: 15px;
@@ -168,7 +175,9 @@ select {
   position: relative;
   z-index: 1;
   width: min(1200px, calc(100% - 32px));
+  max-width: 100%;
   margin: 28px auto 56px;
+  box-sizing: border-box;
 }
 
 /* ── Hero ── */
@@ -212,6 +221,8 @@ h1 {
   line-height: 0.96;
   letter-spacing: -0.04em;
   font-weight: 800;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .subtle {
@@ -227,7 +238,7 @@ h1 {
   flex-direction: column;
   align-items: flex-end;
   gap: 14px;
-  min-width: 220px;
+  min-width: 0;
 }
 
 .hero-actions {
@@ -344,8 +355,8 @@ button {
     background var(--transition),
     box-shadow var(--transition);
   white-space: nowrap;
-  /* Better touch targets on mobile */
   min-height: 44px;
+  max-width: 100%;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
@@ -831,6 +842,9 @@ select:disabled {
   border-radius: var(--radius-md);
   background: var(--meta-bg);
   border: 1px solid var(--line);
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
 }
 
 .profile-meta strong {
@@ -899,7 +913,7 @@ select:disabled {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 620px;
+  min-width: 520px;
 }
 
 thead {
