@@ -111,15 +111,8 @@
   box-sizing: border-box;
 }
 
-html,
 body {
   margin: 0;
-  /* Ngăn page scroll ngang nhưng không ảnh hưởng overflow-x: auto của con */
-  max-width: 100%;
-  overflow-x: clip;
-}
-
-body {
   min-height: 100vh;
   font-family: "Inter", "Segoe UI", "Trebuchet MS", sans-serif;
   font-size: 15px;
@@ -150,6 +143,19 @@ h3,
 p {
   margin: 0;
 }
+
+/* Ngăn text dài gây overflow ngang */
+p,
+span,
+label,
+td,
+th,
+strong {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
+
 button,
 input,
 textarea,
@@ -174,10 +180,8 @@ select {
 .shell {
   position: relative;
   z-index: 1;
-  width: min(1200px, calc(100% - 32px));
-  max-width: 100%;
+  width: min(1200px, calc(100vw - 32px));
   margin: 28px auto 56px;
-  box-sizing: border-box;
 }
 
 /* ── Hero ── */
@@ -422,6 +426,16 @@ button:active {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
   margin-top: 18px;
+}
+
+/* Tất cả direct children của grid/flex không được blowout container */
+.grid > *,
+.hero > *,
+.hero-right > *,
+.session-card > *,
+.stack > *,
+.panel > * {
+  min-width: 0;
 }
 
 /* ── Panel ── */
@@ -1375,7 +1389,7 @@ tbody tr.is-loading td {
 /* ── Responsive: Mobile 600px ── */
 @media (max-width: 600px) {
   .shell {
-    width: calc(100% - 24px);
+    width: calc(100vw - 24px);
     margin: 16px auto 48px;
   }
 
@@ -1517,7 +1531,7 @@ tbody tr.is-loading td {
 /* ── Responsive: Very small 375px ── */
 @media (max-width: 375px) {
   .shell {
-    width: calc(100% - 16px);
+    width: calc(100vw - 16px);
   }
 
   .hero {
