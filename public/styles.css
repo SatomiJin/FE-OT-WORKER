@@ -548,6 +548,16 @@ select:disabled {
   opacity: 0.72;
 }
 
+select option {
+  background: #fff;
+  color: #1a1a1a;
+}
+
+[data-theme="dark"] select option {
+  background: #2a211a;
+  color: #f0e8de;
+}
+
 .time-picker {
   position: relative;
   z-index: 50;
