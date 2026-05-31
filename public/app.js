@@ -7,42 +7,30 @@ import {
   requireSession,
   signOut,
 } from "./auth.js";
-
-function toast(message, type = "info") {
-  const backgrounds = {
-    success: "linear-gradient(135deg, #2e7d32, #43a047)",
-    error: "linear-gradient(135deg, #c62828, #e53935)",
-    info: "linear-gradient(135deg, #1565c0, #1e88e5)",
-    warning: "linear-gradient(135deg, #e65100, #fb8c00)",
-  };
-  Toastify({
-    text: message,
-    duration: type === "error" ? 5000 : 3000,
-    gravity: "top",
-    position: "right",
-    stopOnFocus: true,
-    style: { background: backgrounds[type] ?? backgrounds.info },
-  }).showToast();
-}
-
-function toastConfirm(message) {
-  return window.confirm(message);
-}
+import {
+  DEFAULT_SHEET_NAME,
+  createBlankProfile,
+  formatDateInputValue,
+  formatDateTimeDisplay,
+  formatDurationMinutes,
+  formatTimeInputValue,
+  getWeekdayLabel,
+  minutesBetween,
+  normalizeSheetName,
+  normalizeTime24h,
+  pad,
+  sanitizeEntry,
+  sanitizeProfile,
+  sanitizeTimer,
+  slugifyUsername,
+  splitEntriesAcrossMidnight,
+  splitEntryAcrossMidnight,
+} from "./domain.js";
+import { createOtApiClient, mergeProfilesByUsername } from "./ot-api.js";
+import { toast, toastConfirm } from "./ui-feedback.js";
 
 const API_BASE_URL = getAuthConfig().apiBaseUrl;
 const APP_LOG_PREFIX = "[OT App]";
-const API_LOG_PREFIX = "[OT API]";
-const WEEKDAY_LABELS = [
-  "Chủ nhật",
-  "Thứ hai",
-  "Thứ ba",
-  "Thứ tư",
-  "Thứ năm",
-  "Thứ sáu",
-  "Thứ bảy",
-];
-const weekdayLabelCache = new Map();
-const DEFAULT_SHEET_NAME = "Sheet1";
 
 function logApp(step, detail) {
   void step;
@@ -53,6 +41,16 @@ function logApi(step, detail) {
   void step;
   void detail;
 }
+
+const otApi = createOtApiClient({
+  apiBaseUrl: API_BASE_URL,
+  getAccessToken,
+  refreshSession,
+  onUnauthorized: () => {
+    window.location.href = loginPageLink.href;
+  },
+  logApi,
+});
 
 function formatRequestError(error, fallbackMessage = "Request failed.") {
   if (!error) {
@@ -167,113 +165,6 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-function pad(value) {
-  return String(value).padStart(2, "0");
-}
-
-function normalizeSheetName(value) {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) {
-    return DEFAULT_SHEET_NAME;
-  }
-
-  const comparable = normalized
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "")
-    .toLowerCase();
-
-  if (comparable === "sheet1" || comparable === "trangtinh1") {
-    return DEFAULT_SHEET_NAME;
-  }
-
-  return normalized;
-}
-
-function slugifyUsername(value) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function encodePath(value) {
-  return encodeURIComponent(String(value ?? ""));
-}
-
-function createBlankProfile(username = "my-profile") {
-  const now = new Date();
-  const defaultMonth = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-
-  return {
-    username,
-    selectedMonth: defaultMonth,
-    employee: {
-      label: username.slice(0, 4).toUpperCase() || "DEMO",
-      employeeCode: "",
-      fullName: "",
-      sheetName: DEFAULT_SHEET_NAME,
-    },
-    entries: [],
-    activeTimer: null,
-  };
-}
-
-function sanitizeTimer(rawTimer) {
-  if (!rawTimer || typeof rawTimer !== "object") {
-    return null;
-  }
-
-  const startedAt = String(rawTimer.startedAt ?? "").trim();
-  if (!startedAt || Number.isNaN(new Date(startedAt).getTime())) {
-    return null;
-  }
-
-  return {
-    startedAt,
-    note: String(rawTimer.note ?? "").trim(),
-  };
-}
-
-function sanitizeEntry(rawEntry) {
-  return {
-    id: String(rawEntry?.id ?? "").trim(),
-    date: String(rawEntry?.date ?? "").trim(),
-    startTime: String(rawEntry?.startTime ?? "").trim(),
-    endTime: String(rawEntry?.endTime ?? "").trim(),
-    note: String(rawEntry?.note ?? "").trim(),
-  };
-}
-
-function sanitizeProfile(rawProfile, fallbackUsername = "my-profile") {
-  const username =
-    slugifyUsername(rawProfile?.username ?? fallbackUsername) || "my-profile";
-  const employee = rawProfile?.employee ?? {};
-  const entries = Array.isArray(rawProfile?.entries) ? rawProfile.entries : [];
-
-  return {
-    username,
-    selectedMonth: String(rawProfile?.selectedMonth ?? "").trim(),
-    employee: {
-      label:
-        String(
-          employee.label ?? (username.slice(0, 4).toUpperCase() || "DEMO"),
-        ).trim() || "DEMO",
-      employeeCode: String(employee.employeeCode ?? "").trim(),
-      fullName: String(employee.fullName ?? "").trim(),
-      sheetName: normalizeSheetName(employee.sheetName),
-    },
-    activeTimer: sanitizeTimer(rawProfile?.activeTimer),
-    entries: entries
-      .map((entry) => sanitizeEntry(entry))
-      .filter(
-        (entry) => entry.id && entry.date && entry.startTime && entry.endTime,
-      ),
-  };
 }
 
 function mergeProfile(profile) {
@@ -446,180 +337,6 @@ function getSelectedMonthForProfile(profile) {
   }
 
   return guessMonthForProfile(profile);
-}
-
-function minutesBetween(startTime, endTime) {
-  const [startHour, startMinute] = startTime.split(":").map(Number);
-  const [endHour, endMinute] = endTime.split(":").map(Number);
-  const start = startHour * 60 + startMinute;
-  const end = endHour === 24 ? 1440 : endHour * 60 + endMinute;
-  const diff = end >= start ? end - start : 1440 - start + end;
-  return diff;
-}
-
-function timeToMinutes(timeText) {
-  const [hourText, minuteText] = timeText.split(":");
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  return hour === 24 ? 1440 : hour * 60 + minute;
-}
-
-function isOvernightRange(startTime, endTime) {
-  const normalizedStart = normalizeTime24h(startTime);
-  const normalizedEnd = normalizeTime24h(endTime);
-  if (!normalizedStart || !normalizedEnd) {
-    return false;
-  }
-
-  return timeToMinutes(normalizedEnd) < timeToMinutes(normalizedStart);
-}
-
-function shiftDateByDays(dateText, days) {
-  const match = String(dateText ?? "")
-    .trim()
-    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    return "";
-  }
-
-  const date = new Date(
-    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
-  );
-  date.setUTCDate(date.getUTCDate() + days);
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
-}
-
-function getWeekdayLabel(dateText) {
-  const normalizedDate = String(dateText ?? "").trim();
-  if (!normalizedDate) {
-    return "";
-  }
-
-  if (weekdayLabelCache.has(normalizedDate)) {
-    return weekdayLabelCache.get(normalizedDate) ?? "";
-  }
-
-  const match = normalizedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    weekdayLabelCache.set(normalizedDate, "");
-    return "";
-  }
-
-  const date = new Date(
-    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
-  );
-  const weekdayLabel = Number.isNaN(date.getTime())
-    ? ""
-    : (WEEKDAY_LABELS[date.getUTCDay()] ?? "");
-  weekdayLabelCache.set(normalizedDate, weekdayLabel);
-  return weekdayLabel;
-}
-
-function splitEntryAcrossMidnight(entry, options = {}) {
-  const { preserveIdOnFirstSegment = false } = options;
-  const normalizedEntry = sanitizeEntry(entry);
-  const normalizedStart = normalizeTime24h(normalizedEntry.startTime);
-  const normalizedEnd = normalizeTime24h(normalizedEntry.endTime);
-
-  if (
-    !normalizedEntry.date ||
-    !normalizedStart ||
-    !normalizedEnd ||
-    !isOvernightRange(normalizedStart, normalizedEnd)
-  ) {
-    return [normalizedEntry];
-  }
-
-  const nextDate = shiftDateByDays(normalizedEntry.date, 1);
-  if (!nextDate) {
-    return [normalizedEntry];
-  }
-
-  const firstSegment = {
-    ...normalizedEntry,
-    id: preserveIdOnFirstSegment ? normalizedEntry.id : "",
-    startTime: normalizedStart,
-    endTime: "24:00",
-  };
-
-  if (normalizedEnd === "00:00") {
-    return [firstSegment];
-  }
-
-  return [
-    firstSegment,
-    {
-      ...normalizedEntry,
-      id: "",
-      date: nextDate,
-      startTime: "00:00",
-      endTime: normalizedEnd,
-    },
-  ];
-}
-
-function splitEntriesAcrossMidnight(entries, options = {}) {
-  const sourceEntries = Array.isArray(entries) ? entries : [];
-  return sourceEntries.reduce((result, entry) => {
-    result.push(...splitEntryAcrossMidnight(entry, options));
-    return result;
-  }, []);
-}
-
-function normalizeTime24h(value) {
-  const trimmed = String(value ?? "").trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  const match = trimmed.match(/^(\d{1,2}):(\d{1,2})$/);
-  if (!match) {
-    return null;
-  }
-
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const isMidnightBoundary = hour === 24 && minute === 0;
-  const isRegularTime = hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
-
-  if (!isMidnightBoundary && !isRegularTime) {
-    return null;
-  }
-
-  return `${pad(hour)}:${pad(minute)}`;
-}
-
-function formatDurationMinutes(totalMinutes) {
-  const minutes = Math.max(0, Math.round(totalMinutes));
-  const hoursPart = Math.floor(minutes / 60);
-  const minutesPart = minutes % 60;
-
-  if (hoursPart === 0) {
-    return `${minutesPart}p`;
-  }
-
-  if (minutesPart === 0) {
-    return `${hoursPart}h`;
-  }
-
-  return `${hoursPart}h${pad(minutesPart)}p`;
-}
-
-function formatDateInputValue(date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function formatTimeInputValue(date) {
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function formatDateTimeDisplay(value) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "--:--";
-  }
-
-  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function getTimer(profile = getActiveProfile()) {
@@ -1004,121 +721,6 @@ function sortEntries(entries) {
       `${right.date} ${right.startTime}`,
     ),
   );
-}
-
-async function apiRequest(path, options = {}) {
-  const { method = "GET", body, retryOnUnauthorized = true } = options;
-  const token = await getAccessToken();
-  logApi("Preparing request", {
-    method,
-    url: `${API_BASE_URL}${path}`,
-    hasToken: Boolean(token),
-    retryOnUnauthorized,
-  });
-
-  if (!token) {
-    console.error(`${API_LOG_PREFIX} Missing access token`, { path, method });
-    throw new Error("Không tìm thấy Supabase access token. Hãy đăng nhập lại.");
-  }
-
-  let response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch (error) {
-    console.error(`${API_LOG_PREFIX} Network request failed`, {
-      method,
-      url: `${API_BASE_URL}${path}`,
-      error,
-    });
-    throw error;
-  }
-
-  logApi("Received response", {
-    method,
-    url: `${API_BASE_URL}${path}`,
-    status: response.status,
-    ok: response.ok,
-  });
-
-  if (response.status === 401 && retryOnUnauthorized) {
-    try {
-      logApi("Received 401, attempting refresh");
-      const refreshedSession = await refreshSession();
-      if (refreshedSession?.access_token) {
-        logApi("Refresh succeeded, retrying request", { method, path });
-        return apiRequest(path, {
-          method,
-          body,
-          retryOnUnauthorized: false,
-        });
-      }
-    } catch {
-      console.error(
-        `${API_LOG_PREFIX} Refresh failed after 401, redirecting to login`,
-      );
-      window.location.href = loginPageLink.href;
-      return null;
-    }
-  }
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  const text = await response.text();
-  const payload = text
-    ? (() => {
-        try {
-          return JSON.parse(text);
-        } catch {
-          return text;
-        }
-      })()
-    : null;
-
-  if (!response.ok) {
-    console.error(`${API_LOG_PREFIX} Request failed`, {
-      method,
-      url: `${API_BASE_URL}${path}`,
-      status: response.status,
-      payload,
-    });
-    const error = new Error(
-      payload && typeof payload === "object" && "message" in payload
-        ? payload.message
-        : `Request failed with status ${response.status}.`,
-    );
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
-  }
-
-  return payload;
-}
-
-async function apiRequestWithFallback(primaryPath, fallbackPath, options = {}) {
-  try {
-    return await apiRequest(primaryPath, options);
-  } catch (error) {
-    if (!fallbackPath || ![404, 405, 501].includes(error?.status)) {
-      throw error;
-    }
-
-    logApi("Primary route unavailable, falling back", {
-      primaryPath,
-      fallbackPath,
-      status: error.status,
-    });
-    return apiRequest(fallbackPath, options);
-  }
 }
 
 function getInitials(displayName, email) {
