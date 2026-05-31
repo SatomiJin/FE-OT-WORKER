@@ -302,8 +302,9 @@ h1 {
 /* ── Theme toggle ── */
 .theme-toggle {
   position: relative;
-  width: 56px;
-  height: 30px;
+  width: 52px;
+  height: 28px;
+  min-height: unset;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   padding: 0;
@@ -311,7 +312,7 @@ h1 {
   cursor: pointer;
   transition: background var(--transition);
   flex-shrink: 0;
-  align-self: flex-end;
+  align-self: center;
 }
 
 .theme-toggle:hover {

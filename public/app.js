@@ -134,6 +134,8 @@ const sessionAvatar = document.querySelector("#sessionAvatar");
 const sessionAvatarFallback = document.querySelector("#sessionAvatarFallback");
 const loginPageLink = document.querySelector("#loginPageLink");
 const signOutButton = document.querySelector("#signOutButton");
+const themeToggle = document.querySelector("#themeToggle");
+const themeToggleThumb = themeToggle.querySelector(".theme-toggle-thumb");
 const timerStatus = document.querySelector("#timerStatus");
 const timerStartedAt = document.querySelector("#timerStartedAt");
 const timerElapsed = document.querySelector("#timerElapsed");
@@ -2041,5 +2043,26 @@ signOutButton.addEventListener("click", async () => {
     await signOut();
   } finally {
     window.location.href = loginPageLink.href;
+  }
+});
+
+(function initTheme() {
+  const saved = localStorage.getItem("ot-theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = saved ? saved === "dark" : prefersDark;
+  if (isDark) document.documentElement.setAttribute("data-theme", "dark");
+  themeToggleThumb.textContent = isDark ? "🌙" : "☀️";
+})();
+
+themeToggle.addEventListener("click", () => {
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  if (isDark) {
+    document.documentElement.removeAttribute("data-theme");
+    themeToggleThumb.textContent = "☀️";
+    localStorage.setItem("ot-theme", "light");
+  } else {
+    document.documentElement.setAttribute("data-theme", "dark");
+    themeToggleThumb.textContent = "🌙";
+    localStorage.setItem("ot-theme", "dark");
   }
 });
