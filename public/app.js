@@ -8,7 +8,6 @@ import {
   signOut,
 } from "./auth.js";
 import {
-  DEFAULT_SHEET_NAME,
   createBlankProfile,
   formatDateInputValue,
   formatDateTimeDisplay,
@@ -19,7 +18,6 @@ import {
   normalizeSheetName,
   normalizeTime24h,
   pad,
-  sanitizeEntry,
   sanitizeProfile,
   sanitizeTimer,
   slugifyUsername,
@@ -27,6 +25,10 @@ import {
   splitEntryAcrossMidnight,
 } from "./domain.js";
 import { createOtApiClient, mergeProfilesByUsername } from "./ot-api.js";
+import {
+  createAdminOtExportWorkbook,
+  createOtExportWorkbook,
+} from "./ot-export.js";
 import { toast, toastConfirm } from "./ui-feedback.js";
 
 const API_BASE_URL = getAuthConfig().apiBaseUrl;
@@ -800,62 +802,13 @@ function renderAdminExportAction() {
 }
 
 async function fetchCurrentUserMeta() {
-  state.currentUserMeta = await apiRequest("/api/me");
+  state.currentUserMeta = await otApi.fetchCurrentUserMeta();
   renderAdminExportAction();
   return state.currentUserMeta;
 }
 
 async function fetchAdminMembersFromApi() {
-  const payload = await apiRequest("/api/admin/members");
-  const members = Array.isArray(payload?.members)
-    ? payload.members
-    : Array.isArray(payload?.data?.members)
-      ? payload.data.members
-      : Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload)
-          ? payload
-          : [];
-
-  return members
-    .map((member) => ({
-      ...member,
-      username: slugifyUsername(
-        member?.username ??
-          member?.profile?.username ??
-          member?.account?.username ??
-          member?.user?.username,
-      ),
-    }))
-    .filter((member) => member.username);
-}
-
-function getProfilesFromAdminPayload(payload) {
-  const profiles = Array.isArray(payload?.profiles)
-    ? payload.profiles
-    : Array.isArray(payload?.data?.profiles)
-      ? payload.data.profiles
-      : Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload)
-          ? payload
-          : [];
-
-  return profiles
-    .map((profile) => sanitizeProfile(profile, profile?.username))
-    .filter((profile) => profile.username);
-}
-
-function mergeProfilesByUsername(...profileLists) {
-  const merged = new Map();
-  profileLists.flat().forEach((profile) => {
-    const normalizedProfile = sanitizeProfile(profile, profile?.username);
-    if (normalizedProfile.username) {
-      merged.set(normalizedProfile.username, normalizedProfile);
-    }
-  });
-
-  return [...merged.values()];
+  return otApi.fetchAdminMembers();
 }
 
 function getAdminMemberUsernames() {
@@ -877,12 +830,7 @@ async function ensureAdminMembersLoaded() {
 }
 
 async function fetchAdminOtDataFromApi(month = "") {
-  const query = month ? `?month=${encodeURIComponent(month)}` : "";
-  const payload = await apiRequest(`/api/admin/ot-data${query}`);
-  return {
-    month: payload?.month || null,
-    profiles: getProfilesFromAdminPayload(payload),
-  };
+  return otApi.fetchAdminOtData(month);
 }
 
 function getAdminVisibleProfiles() {
@@ -910,48 +858,15 @@ async function fetchMyProfileFromApi() {
     slugifyUsername(usernameInput.value) ||
     state.suggestedUsername;
 
-  return sanitizeProfile(
-    await apiRequestWithFallback(
-      "/api/profiles/me",
-      username ? `/api/profiles/${encodePath(username)}` : null,
-    ),
-    username || state.suggestedUsername,
-  );
+  return otApi.fetchMyProfile(username, username || state.suggestedUsername);
 }
 
 async function fetchProfileByUsernameFromApi(username) {
-  const normalizedUsername = slugifyUsername(username);
-  if (!normalizedUsername) {
-    throw new Error("Thiếu username để tải hồ sơ.");
-  }
-
-  return sanitizeProfile(
-    await apiRequest(`/api/profiles/${encodePath(normalizedUsername)}`),
-    normalizedUsername,
-  );
+  return otApi.fetchProfileByUsername(username);
 }
 
 async function fetchAdminProfileByUsernameFromApi(username) {
-  const normalizedUsername = slugifyUsername(username);
-  if (!normalizedUsername) {
-    throw new Error("Thiếu username để tải hồ sơ.");
-  }
-
-  const profile = sanitizeProfile(
-    await apiRequestWithFallback(
-      `/api/admin/profiles/${encodePath(normalizedUsername)}`,
-      `/api/profiles/${encodePath(normalizedUsername)}`,
-    ),
-    normalizedUsername,
-  );
-
-  if (profile.username !== normalizedUsername) {
-    throw new Error(
-      `API trả về hồ sơ "${profile.username}" thay vì "${normalizedUsername}".`,
-    );
-  }
-
-  return profile;
+  return otApi.fetchAdminProfileByUsername(username);
 }
 
 async function fetchExpandedAdminProfiles(month = "") {
@@ -968,7 +883,7 @@ async function fetchExpandedAdminProfiles(month = "") {
           try {
             return await fetchAdminProfileByUsernameFromApi(username);
           } catch (error) {
-            console.error(`${API_LOG_PREFIX} Admin profile fallback failed`, {
+            console.error("[OT API] Admin profile fallback failed", {
               username,
               error,
             });
@@ -985,141 +900,39 @@ async function fetchExpandedAdminProfiles(month = "") {
 }
 
 async function createProfileInApi(username) {
-  return sanitizeProfile(
-    await apiRequestWithFallback("/api/profiles/me/init", "/api/profiles", {
-      method: "POST",
-      body: { username },
-    }),
-    username,
-  );
+  return otApi.createProfile(username);
 }
 
 async function updateProfileInApi(profile) {
-  return sanitizeProfile(
-    await apiRequestWithFallback(
-      "/api/profiles/me",
-      `/api/profiles/${encodePath(profile.username)}`,
-      {
-        method: "PUT",
-        body: {
-          selectedMonth: profile.selectedMonth,
-          employee: {
-            label: profile.employee.label,
-            employeeCode: profile.employee.employeeCode,
-            fullName: profile.employee.fullName,
-            sheetName: profile.employee.sheetName,
-          },
-        },
-      },
-    ),
-    profile.username,
-  );
+  return otApi.updateProfile(profile);
 }
 
 async function deleteProfileInApi(username) {
-  await apiRequest(`/api/profiles/${encodePath(username)}`, {
-    method: "DELETE",
-  });
+  await otApi.deleteProfile(username);
 }
 
 async function createEntryInApi(username, entry) {
-  return sanitizeEntry(
-    await apiRequestWithFallback(
-      "/api/profiles/me/entries",
-      `/api/profiles/${encodePath(username)}/entries`,
-      {
-        method: "POST",
-        body: {
-          date: entry.date,
-          startTime: entry.startTime,
-          endTime: entry.endTime,
-          note: entry.note,
-        },
-      },
-    ),
-  );
+  return otApi.createEntry(username, entry);
 }
 
 async function updateEntryInApi(username, entryId, entry) {
-  return sanitizeEntry(
-    await apiRequestWithFallback(
-      `/api/profiles/me/entries/${encodePath(entryId)}`,
-      `/api/profiles/${encodePath(username)}/entries/${encodePath(entryId)}`,
-      {
-        method: "PUT",
-        body: {
-          date: entry.date,
-          startTime: entry.startTime,
-          endTime: entry.endTime,
-          note: entry.note,
-        },
-      },
-    ),
-  );
+  return otApi.updateEntry(username, entryId, entry);
 }
 
 async function deleteEntryInApi(username, entryId) {
-  await apiRequestWithFallback(
-    `/api/profiles/me/entries/${encodePath(entryId)}`,
-    `/api/profiles/${encodePath(username)}/entries/${encodePath(entryId)}`,
-    { method: "DELETE" },
-  );
+  await otApi.deleteEntry(username, entryId);
 }
 
 async function startTimerInApi(username, note) {
-  return sanitizeTimer(
-    await apiRequestWithFallback(
-      "/api/profiles/me/timer/start",
-      `/api/profiles/${encodePath(username)}/timer/start`,
-      {
-        method: "POST",
-        body: { note },
-      },
-    ),
-  );
+  return otApi.startTimer(username, note);
 }
 
 async function updateTimerInApi(username, note) {
-  return sanitizeTimer(
-    await apiRequestWithFallback(
-      "/api/profiles/me/timer",
-      `/api/profiles/${encodePath(username)}/timer`,
-      {
-        method: "PUT",
-        body: { note },
-      },
-    ),
-  );
+  return otApi.updateTimer(username, note);
 }
 
 async function stopTimerInApi(username, note) {
-  return sanitizeEntry(
-    await apiRequestWithFallback(
-      "/api/profiles/me/timer/stop",
-      `/api/profiles/${encodePath(username)}/timer/stop`,
-      {
-        method: "POST",
-        body: { note },
-      },
-    ),
-  );
-}
-
-function getDownloadFileNameFromResponse(response, fallbackFileName) {
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utf8Match?.[1]) {
-    return decodeURIComponent(utf8Match[1].replace(/^"|"$/g, ""));
-  }
-
-  return (
-    disposition.match(/filename="([^"]+)"/i)?.[1] ||
-    disposition
-      .match(/filename=([^;]+)/i)?.[1]
-      ?.trim()
-      .replace(/^"|"$/g, "") ||
-    fallbackFileName
-  );
+  return otApi.stopTimer(username, note);
 }
 
 async function downloadAdminOtExport(options = {}) {
@@ -1572,345 +1385,6 @@ function downloadJson() {
     type: "application/json",
   });
   triggerDownload(blob, `${profile.username}.ot.json`);
-}
-
-const OT_EXPORT_HEADERS = [
-  "DEMO",
-  "MSNV",
-  "Họ và tên",
-  "",
-  "Ngày ghi nhận OT",
-  "Thời gian vào ca",
-  "Thời gian ra ca",
-  "Tổng giờ OT",
-  "Giải trình (7,14,21,28)",
-];
-const OT_EXPORT_COLUMN_WIDTHS = [
-  16.75, 16.75, 22.13, 22.13, 36.63, 16.75, 16.75, 16.75, 94.75,
-];
-const OT_EXPORT_COLORS = {
-  headerText: "FF914D4F",
-  dateFill: "FFB7E1CD",
-  hoursText: "FF4A86E8",
-  border: "FF000000",
-};
-
-function createOtExportBorder() {
-  return {
-    top: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
-    right: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
-    bottom: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
-    left: { style: "thin", color: { argb: OT_EXPORT_COLORS.border } },
-  };
-}
-
-function createOtExportHeaderStyle(overrides = {}) {
-  return {
-    font: {
-      bold: true,
-      color: { argb: OT_EXPORT_COLORS.headerText },
-    },
-    alignment: {
-      horizontal: "center",
-      vertical: "middle",
-      wrapText: true,
-    },
-    border: createOtExportBorder(),
-    ...overrides,
-  };
-}
-
-function createOtExportCellStyle(overrides = {}) {
-  return {
-    alignment: {
-      vertical: "middle",
-    },
-    border: createOtExportBorder(),
-    ...overrides,
-  };
-}
-
-function parseExcelCompatibleDate(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-  }
-
-  const match = String(value ?? "")
-    .trim()
-    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    return null;
-  }
-
-  const year = Number(match[1]);
-  const monthIndex = Number(match[2]) - 1;
-  const day = Number(match[3]);
-  const date = new Date(year, monthIndex, day);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function parseExcelCompatibleTime(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw) {
-    return null;
-  }
-
-  const match = raw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  if (!match) {
-    return null;
-  }
-
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const second = Number(match[3] ?? "0");
-  const isMidnightBoundary = hour === 24 && minute === 0 && second === 0;
-  const isRegularTime =
-    hour >= 0 &&
-    hour <= 23 &&
-    minute >= 0 &&
-    minute <= 59 &&
-    second >= 0 &&
-    second <= 59;
-
-  if (!isMidnightBoundary && !isRegularTime) {
-    return null;
-  }
-
-  const totalSeconds = isMidnightBoundary
-    ? 86400
-    : hour * 3600 + minute * 60 + second;
-  return totalSeconds / 86400;
-}
-
-function normalizeOtExportRecord(record) {
-  const date = parseExcelCompatibleDate(record?.date);
-  const startTimeSerial = parseExcelCompatibleTime(record?.startTime);
-  const endTimeSerial = parseExcelCompatibleTime(record?.endTime);
-  const startTimeText = String(record?.startTime ?? "").trim();
-  const endTimeText = String(record?.endTime ?? "").trim();
-
-  if (!date || startTimeSerial === null || endTimeSerial === null) {
-    return null;
-  }
-
-  return {
-    date,
-    startTimeSerial,
-    endTimeSerial,
-    startTimeText,
-    endTimeText,
-    totalHours:
-      minutesBetween(
-        normalizeTime24h(startTimeText) ?? startTimeText,
-        normalizeTime24h(endTimeText) ?? endTimeText,
-      ) / 60,
-    note: String(record?.note ?? "").trim(),
-  };
-}
-
-function formatOtHoursForExport(value) {
-  const normalizedValue = Number(value);
-  if (!Number.isFinite(normalizedValue)) {
-    return "0.00";
-  }
-
-  return normalizedValue.toFixed(2);
-}
-
-function createOtExportWorkbook(records, employee = {}) {
-  const workbook = new window.ExcelJS.Workbook();
-  workbook.creator = "OT Tracker";
-  workbook.calcProperties.fullCalcOnLoad = true;
-  createOtExportWorksheet(workbook, records, employee);
-
-  return workbook;
-}
-
-function getUniqueWorksheetName(workbook, desiredName) {
-  const baseName =
-    normalizeSheetName(desiredName).slice(0, 31) || DEFAULT_SHEET_NAME;
-  let candidate = baseName;
-  let index = 2;
-
-  while (workbook.getWorksheet(candidate)) {
-    const suffix = ` ${index}`;
-    candidate = `${baseName.slice(0, 31 - suffix.length)}${suffix}`;
-    index += 1;
-  }
-
-  return candidate;
-}
-
-function createOtExportWorksheet(workbook, records, employee = {}) {
-  const worksheet = workbook.addWorksheet(
-    getUniqueWorksheetName(workbook, employee.sheetName),
-    {
-      views: [{ state: "frozen", ySplit: 1 }],
-    },
-  );
-
-  setOtExportColumnWidths(worksheet);
-  writeOtExportHeader(worksheet);
-  writeOtExportRows(worksheet, records, employee);
-
-  return worksheet;
-}
-
-function createAdminOtExportWorkbook(profiles) {
-  const workbook = new window.ExcelJS.Workbook();
-  workbook.creator = "OT Tracker";
-  workbook.calcProperties.fullCalcOnLoad = true;
-
-  const worksheet = workbook.addWorksheet(
-    getUniqueWorksheetName(workbook, "All members"),
-    {
-      views: [{ state: "frozen", ySplit: 1 }],
-    },
-  );
-
-  const records = profiles.flatMap((profile) => {
-    const employee = profile.employee ?? {};
-    return splitEntriesAcrossMidnight(profile.entries ?? []).map((entry) => ({
-      entry,
-      employee,
-    }));
-  });
-
-  setOtExportColumnWidths(worksheet);
-  writeOtExportHeader(worksheet);
-  writeAdminOtExportRows(worksheet, records);
-
-  return workbook;
-}
-
-function setOtExportColumnWidths(worksheet) {
-  worksheet.columns = OT_EXPORT_COLUMN_WIDTHS.map((width) => ({ width }));
-}
-
-function writeOtExportHeader(worksheet) {
-  const headerRow = worksheet.getRow(1);
-  OT_EXPORT_HEADERS.forEach((value, index) => {
-    headerRow.getCell(index + 1).value = value;
-  });
-
-  headerRow.height = 28;
-  applyOtExportHeaderStyles(headerRow);
-}
-
-function applyOtExportHeaderStyles(row) {
-  row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-    const headerStyle = createOtExportHeaderStyle();
-
-    if (columnNumber === 5) {
-      headerStyle.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: OT_EXPORT_COLORS.dateFill },
-      };
-    }
-
-    if (columnNumber === 8) {
-      headerStyle.font = {
-        bold: true,
-        color: { argb: OT_EXPORT_COLORS.hoursText },
-      };
-    }
-
-    cell.style = headerStyle;
-  });
-}
-
-function writeOtExportRows(worksheet, records, employee) {
-  const normalizedRecords = records
-    .map((record) => normalizeOtExportRecord(record))
-    .filter(Boolean);
-  const employeeCode = String(employee.employeeCode ?? "").trim();
-  const employeeName = String(employee.fullName ?? "").trim();
-
-  normalizedRecords.forEach((record, index) => {
-    const rowNumber = index + 2;
-    const row = worksheet.getRow(rowNumber);
-
-    row.getCell(1).value = "DEMO";
-    row.getCell(2).value = employeeCode;
-    row.getCell(3).value = employeeName;
-    row.getCell(4).value = "";
-    row.getCell(5).value = record.date;
-    row.getCell(6).value = record.startTimeSerial;
-    row.getCell(7).value = record.endTimeSerial;
-    row.getCell(8).value = {
-      formula: `SUBSTITUTE(TEXT(MOD(G${rowNumber}-F${rowNumber},1)*24,"0.00"),",",".")`,
-      result: formatOtHoursForExport(record.totalHours),
-    };
-    row.getCell(9).value = record.note;
-
-    applyOtExportDataStyles(row);
-  });
-}
-
-function writeAdminOtExportRows(worksheet, records) {
-  const normalizedRecords = records
-    .map(({ entry, employee }) => ({
-      record: normalizeOtExportRecord(entry),
-      employee: employee ?? {},
-    }))
-    .filter(({ record }) => record);
-
-  normalizedRecords.forEach(({ record, employee }, index) => {
-    const rowNumber = index + 2;
-    const row = worksheet.getRow(rowNumber);
-    const employeeCode = String(employee.employeeCode ?? "").trim();
-    const employeeName = String(employee.fullName ?? "").trim();
-
-    row.getCell(1).value = "DEMO";
-    row.getCell(2).value = employeeCode;
-    row.getCell(3).value = employeeName;
-    row.getCell(4).value = "";
-    row.getCell(5).value = record.date;
-    row.getCell(6).value = record.startTimeSerial;
-    row.getCell(7).value = record.endTimeSerial;
-    row.getCell(8).value = {
-      formula: `SUBSTITUTE(TEXT(MOD(G${rowNumber}-F${rowNumber},1)*24,"0.00"),",",".")`,
-      result: formatOtHoursForExport(record.totalHours),
-    };
-    row.getCell(9).value = record.note;
-
-    applyOtExportDataStyles(row);
-  });
-}
-
-function applyOtExportDataStyles(row) {
-  row.height = 22;
-
-  row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-    const isCentered = columnNumber >= 5 && columnNumber <= 8;
-    cell.style = createOtExportCellStyle({
-      alignment: {
-        horizontal: isCentered ? "center" : "left",
-        vertical: "middle",
-      },
-    });
-
-    if (columnNumber === 5) {
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: OT_EXPORT_COLORS.dateFill },
-      };
-      cell.numFmt = "dd/MM/yyyy";
-    }
-
-    if (columnNumber === 6 || columnNumber === 7) {
-      cell.numFmt = "HH:mm:ss";
-    }
-
-    if (columnNumber === 8) {
-      cell.font = {
-        color: { argb: OT_EXPORT_COLORS.hoursText },
-      };
-      cell.numFmt = "@";
-    }
-  });
 }
 
 async function downloadExcel() {
