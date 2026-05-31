@@ -338,7 +338,7 @@ h1 {
 }
 
 [data-theme="dark"] .theme-toggle-thumb {
-  transform: translateX(26px);
+  transform: translateX(24px);
   background: var(--secondary);
 }
 
@@ -1464,14 +1464,19 @@ tbody tr.is-loading td {
 
   /* session actions stacked */
   .session-actions {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
     gap: 8px;
   }
 
-  .session-actions > * {
-    width: 100%;
+  .session-actions > *:not(.theme-toggle) {
+    width: auto;
     text-align: center;
+  }
+
+  .session-actions .ghost {
+    flex: 1;
   }
 
   /* Admin controls stacked */
