@@ -173,15 +173,44 @@ export function createOtApiClient({
 
     async fetchMyProfile(username, fallbackUsername = "my-profile") {
       const normalizedUsername = slugifyUsername(username);
-      return sanitizeProfile(
+      const fallbackPath = normalizedUsername
+        ? `/api/profiles/${encodePath(normalizedUsername)}`
+        : null;
+      const profile = sanitizeProfile(
         await requestWithFallback(
           "/api/profiles/me",
-          normalizedUsername
-            ? `/api/profiles/${encodePath(normalizedUsername)}`
-            : null,
+          fallbackPath,
         ),
         normalizedUsername || fallbackUsername,
       );
+
+      if (
+        !fallbackPath ||
+        (!normalizedUsername && profile.entries.length > 0) ||
+        (profile.username === normalizedUsername && profile.entries.length > 0)
+      ) {
+        return profile;
+      }
+
+      try {
+        const fallbackProfile = sanitizeProfile(
+          await request(fallbackPath),
+          normalizedUsername || fallbackUsername,
+        );
+
+        if (
+          profile.username !== normalizedUsername ||
+          fallbackProfile.entries.length > profile.entries.length
+        ) {
+          return fallbackProfile;
+        }
+      } catch (error) {
+        if (profile.username !== normalizedUsername) {
+          throw error;
+        }
+      }
+
+      return profile;
     },
 
     async fetchProfileByUsername(username) {

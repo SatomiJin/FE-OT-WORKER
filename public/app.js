@@ -1390,8 +1390,18 @@ function downloadJson() {
 }
 
 async function downloadExcel() {
-  const profile = exportableProfile();
-  const month = getSelectedMonth() || guessMonthForProfile(profile);
+  const currentProfile = requireActiveProfile("xuat Excel");
+  const month = getSelectedMonth() || guessMonthForProfile(currentProfile);
+  const latestProfile = await fetchMyProfileFromApi();
+  const refreshedProfile = mergeProfile(latestProfile);
+  if (month) {
+    refreshedProfile.selectedMonth = month;
+  }
+  setActiveUsername(refreshedProfile.username);
+  if (month) {
+    exportMonthInput.value = month;
+  }
+  const profile = exportableProfile(refreshedProfile);
   const exportRecords = splitEntriesAcrossMidnight(profile.entries).filter(
     (entry) => entry.date.startsWith(month),
   );
@@ -1400,6 +1410,14 @@ async function downloadExcel() {
     toast(
       "Thiếu thư viện export .xlsx. Hãy tải lại trang rồi thử lại.",
       "error",
+    );
+    return;
+  }
+
+  if (exportRecords.length === 0) {
+    toast(
+      `Không có dữ liệu OT trong tháng ${month} để xuất Excel.`,
+      "warning",
     );
     return;
   }
