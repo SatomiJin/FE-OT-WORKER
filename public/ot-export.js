@@ -329,7 +329,7 @@ function applyOtExportDataStyles(row) {
         pattern: "solid",
         fgColor: { argb: OT_EXPORT_COLORS.dateFill },
       };
-      cell.numFmt = "dd/MM/yyyy";
+      cell.numFmt = "mm/dd/yyyy";
     }
 
     if (columnNumber === 6 || columnNumber === 7) {
