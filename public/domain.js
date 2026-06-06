@@ -235,6 +235,21 @@ export function splitEntriesAcrossMidnight(entries, options = {}) {
   }, []);
 }
 
+export function isEntryInMonth(entry, month) {
+  const normalizedMonth = String(month ?? "").trim();
+  if (!normalizedMonth) {
+    return true;
+  }
+
+  return String(entry?.date ?? "").startsWith(normalizedMonth);
+}
+
+export function getEntriesForMonth(entries, month, options = {}) {
+  return splitEntriesAcrossMidnight(entries, options).filter((entry) =>
+    isEntryInMonth(entry, month),
+  );
+}
+
 export function normalizeTime24h(value) {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) {

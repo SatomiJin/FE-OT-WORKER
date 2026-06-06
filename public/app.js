@@ -13,6 +13,7 @@ import {
   formatDateTimeDisplay,
   formatDurationMinutes,
   formatTimeInputValue,
+  getEntriesForMonth,
   getWeekdayLabel,
   minutesBetween,
   normalizeSheetName,
@@ -847,10 +848,12 @@ function getAdminVisibleProfiles() {
 
 function getAdminVisibleRows() {
   return getAdminVisibleProfiles().flatMap((profile) =>
-    sortEntries(profile.entries).map((entry) => ({
-      profile,
-      entry,
-    })),
+    sortEntries(getEntriesForMonth(profile.entries, state.admin.month)).map(
+      (entry) => ({
+        profile,
+        entry,
+      }),
+    ),
   );
 }
 
@@ -898,7 +901,10 @@ async function fetchExpandedAdminProfiles(month = "") {
     profiles = mergeProfilesByUsername(profiles, fetchedProfiles);
   }
 
-  return profiles;
+  return profiles.map((profile) => ({
+    ...profile,
+    entries: getEntriesForMonth(profile.entries, month),
+  }));
 }
 
 async function createProfileInApi(username) {
@@ -972,7 +978,20 @@ async function downloadAdminOtExport(options = {}) {
     return;
   }
 
-  const workbook = createAdminOtExportWorkbook(profiles);
+  const entryCount = profiles.reduce(
+    (count, profile) =>
+      count + getEntriesForMonth(profile.entries, state.admin.month).length,
+    0,
+  );
+  if (entryCount === 0) {
+    const monthText = state.admin.month ? ` trong tháng ${state.admin.month}` : "";
+    toast(`Không có dữ liệu OT${monthText} để xuất Excel.`, "warning");
+    return;
+  }
+
+  const workbook = createAdminOtExportWorkbook(profiles, {
+    month: state.admin.month,
+  });
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

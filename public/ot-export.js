@@ -1,9 +1,9 @@
 import {
   DEFAULT_SHEET_NAME,
+  getEntriesForMonth,
   minutesBetween,
   normalizeSheetName,
   normalizeTime24h,
-  splitEntriesAcrossMidnight,
 } from "./domain.js";
 
 const OT_EXPORT_HEADERS = [
@@ -188,7 +188,8 @@ function createOtExportWorksheet(workbook, records, employee = {}) {
   return worksheet;
 }
 
-export function createAdminOtExportWorkbook(profiles) {
+export function createAdminOtExportWorkbook(profiles, options = {}) {
+  const { month = "" } = options;
   const workbook = new window.ExcelJS.Workbook();
   workbook.creator = "OT Tracker";
   workbook.calcProperties.fullCalcOnLoad = true;
@@ -202,7 +203,7 @@ export function createAdminOtExportWorkbook(profiles) {
 
   const records = profiles.flatMap((profile) => {
     const employee = profile.employee ?? {};
-    return splitEntriesAcrossMidnight(profile.entries ?? []).map((entry) => ({
+    return getEntriesForMonth(profile.entries ?? [], month).map((entry) => ({
       entry,
       employee,
     }));
