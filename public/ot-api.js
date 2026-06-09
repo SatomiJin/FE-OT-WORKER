@@ -15,6 +15,28 @@ export function createOtApiClient({
   onUnauthorized,
   logApi = () => {},
 }) {
+  function buildEmployeePayload(employee = {}) {
+    return {
+      label: employee.label ?? "",
+      employeeCode: employee.employeeCode ?? "",
+      fullName: employee.fullName ?? "",
+      sheetName: employee.sheetName ?? "",
+    };
+  }
+
+  function getErrorMessage(payload, fallback) {
+    if (!payload || typeof payload !== "object") {
+      return fallback;
+    }
+
+    return (
+      payload.message ??
+      payload.error?.message ??
+      payload.data?.error?.message ??
+      fallback
+    );
+  }
+
   async function request(path, options = {}) {
     const { method = "GET", body, retryOnUnauthorized = true } = options;
     const token = await getAccessToken();
@@ -103,9 +125,7 @@ export function createOtApiClient({
         payload,
       });
       const error = new Error(
-        payload && typeof payload === "object" && "message" in payload
-          ? payload.message
-          : `Request failed with status ${response.status}.`,
+        getErrorMessage(payload, `Request failed with status ${response.status}.`),
       );
       error.status = response.status;
       error.payload = payload;
@@ -267,16 +287,23 @@ export function createOtApiClient({
             method: "PUT",
             body: {
               selectedMonth: profile.selectedMonth,
-              employee: {
-                label: profile.employee.label,
-                employeeCode: profile.employee.employeeCode,
-                fullName: profile.employee.fullName,
-                sheetName: profile.employee.sheetName,
-              },
+              employee: buildEmployeePayload(profile.employee),
             },
           },
         ),
         profile.username,
+      );
+    },
+
+    async updateEmployeeProfile(employee, fallbackUsername = "my-profile") {
+      return sanitizeProfile(
+        await request("/api/profiles/me", {
+          method: "PUT",
+          body: {
+            employee: buildEmployeePayload(employee),
+          },
+        }),
+        fallbackUsername,
       );
     },
 

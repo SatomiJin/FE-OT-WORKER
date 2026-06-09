@@ -81,7 +81,6 @@ const state = {
     selectedUsername: "",
     month: "",
   },
-  profileSaveHandle: 0,
   timerNoteSaveHandle: 0,
   loading: {
     savingEntry: false,
@@ -90,6 +89,7 @@ const state = {
     deletingEntryIds: new Set(),
     deletingProfileUsername: "",
     creatingProfile: false,
+    updatingEmployee: false,
     stoppingTimer: false,
   },
 };
@@ -97,6 +97,7 @@ const state = {
 const profileForm = document.querySelector("#profileForm");
 const usernameInput = document.querySelector("#usernameInput");
 const employeeForm = document.querySelector("#employeeForm");
+const employeeUpdateButton = document.querySelector("#employeeUpdateButton");
 const entryForm = document.querySelector("#entryForm");
 const entryFormOverlay = document.querySelector("#entryFormOverlay");
 const entryFormOverlayText = document.querySelector("#entryFormOverlayText");
@@ -212,6 +213,10 @@ function isCreatingProfile() {
   return state.loading.creatingProfile;
 }
 
+function isUpdatingEmployee() {
+  return state.loading.updatingEmployee;
+}
+
 function isAdminExporting() {
   return state.loading.adminExporting;
 }
@@ -278,6 +283,11 @@ function setDeletingProfile(username, isLoading) {
 function setCreatingProfile(isLoading) {
   state.loading.creatingProfile = Boolean(isLoading);
   renderProfileActions();
+}
+
+function setUpdatingEmployee(isLoading) {
+  state.loading.updatingEmployee = Boolean(isLoading);
+  renderEmployeeFormState();
 }
 
 function setAdminExporting(isLoading) {
@@ -915,6 +925,10 @@ async function updateProfileInApi(profile) {
   return otApi.updateProfile(profile);
 }
 
+async function updateEmployeeProfileInApi(profile) {
+  return otApi.updateEmployeeProfile(profile.employee, profile.username);
+}
+
 async function deleteProfileInApi(username) {
   await otApi.deleteProfile(username);
 }
@@ -1047,6 +1061,23 @@ function renderProfileActions() {
   createProfileButton.innerHTML = isProfileCreating
     ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang tạo hồ sơ...</span>'
     : "Tạo hồ sơ cho account này";
+}
+
+function renderEmployeeFormState() {
+  const isBusy = isUpdatingEmployee();
+  const hasProfile = Boolean(getActiveProfile());
+  employeeForm.classList.toggle("is-busy", isBusy);
+
+  Object.values(employeeFields).forEach((field) => {
+    field.disabled = isBusy;
+  });
+
+  if (employeeUpdateButton) {
+    employeeUpdateButton.disabled = !hasProfile || isBusy;
+    employeeUpdateButton.innerHTML = isBusy
+      ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang cập nhật...</span>'
+      : "Cập nhật thông tin";
+  }
 }
 
 function renderStats() {
@@ -1384,6 +1415,7 @@ function renderAll() {
   renderProfileList();
   renderProfileMeta();
   renderProfileActions();
+  renderEmployeeFormState();
   renderAdminPanel();
   renderAdminExportAction();
   renderEntryFormState();
@@ -1560,26 +1592,42 @@ async function createProfile(username, fullName) {
   }
 }
 
-function queueProfileSave() {
-  const profile = getActiveProfile();
-  if (!profile) {
+async function updateEmployeeForActiveProfile() {
+  if (isUpdatingEmployee()) {
     return;
   }
 
-  syncStateFromEmployeeForm();
-  profile.selectedMonth = getSelectedMonth();
-  window.clearTimeout(state.profileSaveHandle);
-  state.profileSaveHandle = window.setTimeout(async () => {
-    try {
-      const updatedProfile = await updateProfileInApi(profile);
-      mergeProfile(updatedProfile);
-      if (state.activeUsername === updatedProfile.username) {
-        renderAll();
-      }
-    } catch (error) {
-      console.error(error);
+  if (!employeeForm.reportValidity()) {
+    return;
+  }
+
+  try {
+    const profile = requireActiveProfile("cap nhat thong tin nhan su");
+    setUpdatingEmployee(true);
+    syncStateFromEmployeeForm();
+    const updatedProfile = await updateEmployeeProfileInApi(profile);
+    mergeProfile(updatedProfile);
+    if (state.activeUsername === updatedProfile.username) {
+      renderAll();
     }
-  }, 350);
+    toast("Đã cập nhật thông tin nhân sự thành công.", "success");
+  } catch (error) {
+    if (error.status === 409) {
+      await openMyProfile({ silent: true });
+      toast(
+        "Hồ sơ vừa được cập nhật ở nơi khác. Mình đã tải lại dữ liệu mới nhất, bạn kiểm tra rồi bấm cập nhật lại nhé.",
+        "warning",
+      );
+      return;
+    }
+
+    toast(
+      formatRequestError(error, "Không cập nhật được thông tin nhân sự."),
+      "error",
+    );
+  } finally {
+    setUpdatingEmployee(false);
+  }
 }
 
 async function saveActiveProfile() {
@@ -1801,7 +1849,11 @@ employeeForm.addEventListener("input", () => {
   syncStateFromEmployeeForm();
   renderProfileMeta();
   renderJsonPreview();
-  queueProfileSave();
+});
+
+employeeForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await updateEmployeeForActiveProfile();
 });
 
 entryForm.addEventListener("submit", async (event) => {
