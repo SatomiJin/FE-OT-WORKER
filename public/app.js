@@ -2086,7 +2086,7 @@ signOutButton.addEventListener("click", async () => {
 (function initTheme() {
   const saved = localStorage.getItem("ot-theme");
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const isDark = saved ? saved === "dark" : prefersDark;
+  const isDark = saved ? saved === "dark" : true; // default dark
   if (isDark) document.documentElement.setAttribute("data-theme", "dark");
   themeToggleThumb.textContent = isDark ? "🌙" : "☀️";
 })();
