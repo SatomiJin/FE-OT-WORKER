@@ -1564,7 +1564,6 @@ tbody tr.is-loading td {
   transition:
     background var(--transition),
     transform 200ms cubic-bezier(0.2, 0, 0, 1),
-    padding 200ms cubic-bezier(0.2, 0, 0, 1),
     opacity var(--transition);
 }
 
@@ -1584,21 +1583,6 @@ tbody tr.is-loading td {
 
 .feedback-fab-label {
   white-space: nowrap;
-  max-width: 90px;
-  overflow: hidden;
-  transition:
-    max-width 200ms cubic-bezier(0.2, 0, 0, 1),
-    opacity 150ms ease;
-}
-
-/* Icon-only circle by default so it never covers table actions. */
-.feedback-fab.is-compact {
-  padding: 13px;
-  gap: 0;
-}
-
-.feedback-fab.is-compact .feedback-fab-label {
-  display: none;
 }
 
 .feedback-fab.is-open {
