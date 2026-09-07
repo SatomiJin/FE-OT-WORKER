@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/auth-config.js",
+      "destination": "https://be-ot-worker.vercel.app/api/auth-config"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://be-ot-worker.vercel.app/api/:path*"
     }
