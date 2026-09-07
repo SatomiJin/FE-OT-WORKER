@@ -2346,7 +2346,6 @@ const feedbackState = {
   isOpen: false,
   isSending: false,
   lastFocusedElement: null,
-  fabCompactHandle: 0,
 };
 
 function buildFeedbackContext() {
@@ -2594,23 +2593,6 @@ function setupFeedbackWidget() {
       feedbackForm.requestSubmit();
     }
   });
-
-  // Shrink to a circle while scrolling so it never blocks the row actions.
-  window.addEventListener(
-    "scroll",
-    () => {
-      if (feedbackState.isOpen) {
-        return;
-      }
-
-      feedbackFab.classList.add("is-compact");
-      window.clearTimeout(feedbackState.fabCompactHandle);
-      feedbackState.fabCompactHandle = window.setTimeout(() => {
-        feedbackFab.classList.remove("is-compact");
-      }, 700);
-    },
-    { passive: true },
-  );
 
   if (readFeedbackDraft()) {
     restoreFeedbackDraft();

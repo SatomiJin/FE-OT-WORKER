@@ -1591,14 +1591,14 @@ tbody tr.is-loading td {
     opacity 150ms ease;
 }
 
-/* Collapse to a circle while scrolling so it stops covering table actions. */
+/* Icon-only circle by default so it never covers table actions. */
 .feedback-fab.is-compact {
   padding: 13px;
+  gap: 0;
 }
 
 .feedback-fab.is-compact .feedback-fab-label {
-  max-width: 0;
-  opacity: 0;
+  display: none;
 }
 
 .feedback-fab.is-open {
