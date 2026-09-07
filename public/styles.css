@@ -722,6 +722,9 @@ select option {
   background: rgba(255, 252, 248, 0.98);
   box-shadow: var(--shadow-lg);
   isolation: isolate;
+  /* Hard ceiling so the popover can never run off the viewport. */
+  max-height: calc(100vh - 24px);
+  overflow: hidden;
 }
 
 .time-picker.time-picker--drop-up .time-picker-popover {
@@ -757,6 +760,7 @@ select option {
   gap: 6px;
   max-height: var(--time-picker-list-max-height, 240px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 4px;
 }
 

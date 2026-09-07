@@ -539,6 +539,21 @@ function closeAllTimePickers() {
   });
 }
 
+function isTimePickerInputVisible(root) {
+  const input = root?.querySelector(".time-picker-input");
+  if (!input) {
+    return false;
+  }
+
+  const rect = input.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
+    return false;
+  }
+
+  // Keep the popover open only while the field itself is still on screen.
+  return rect.bottom > 0 && rect.top < window.innerHeight;
+}
+
 function positionTimePicker(root) {
   if (!root) {
     return;
@@ -546,30 +561,30 @@ function positionTimePicker(root) {
 
   const input = root.querySelector(".time-picker-input");
   const popover = root.querySelector("[data-time-popover]");
-  const viewportPadding = 16;
+  const viewportPadding = 12;
   const gap = 10;
+  const popoverChrome = 70;
+  const minListHeight = 120;
 
   root.classList.remove("time-picker--drop-up");
   popover.style.removeProperty("--time-picker-list-max-height");
 
   const inputRect = input.getBoundingClientRect();
-  const estimatedPopoverHeight = Math.min(
-    360,
-    window.innerHeight - viewportPadding * 2,
-  );
-  const spaceBelow = window.innerHeight - inputRect.bottom - viewportPadding;
-  const spaceAbove = inputRect.top - viewportPadding;
-  const shouldDropUp =
-    spaceBelow < estimatedPopoverHeight && spaceAbove > spaceBelow;
-  const availableSpace = Math.max(
-    180,
-    (shouldDropUp ? spaceAbove : spaceBelow) - gap,
-  );
-  const listMaxHeight = Math.max(120, Math.floor(availableSpace - 70));
+  const spaceBelow = window.innerHeight - inputRect.bottom - viewportPadding - gap;
+  const spaceAbove = inputRect.top - viewportPadding - gap;
+  const shouldDropUp = spaceBelow < spaceAbove;
+  const availableSpace = shouldDropUp ? spaceAbove : spaceBelow;
 
   if (shouldDropUp) {
     root.classList.add("time-picker--drop-up");
   }
+
+  // Never let the list grow past the space actually left in the viewport,
+  // otherwise the popover runs off screen and has to be scrolled to.
+  const listMaxHeight = Math.max(
+    minListHeight,
+    Math.min(240, Math.floor(availableSpace - popoverChrome)),
+  );
 
   popover.style.setProperty(
     "--time-picker-list-max-height",
@@ -684,21 +699,27 @@ function setupTimePickers() {
     }
   });
 
-  window.addEventListener("resize", () => {
-    if (timePickerState.activeRoot) {
-      positionTimePicker(timePickerState.activeRoot);
+  function refreshActiveTimePicker() {
+    const activeRoot = timePickerState.activeRoot;
+    if (!activeRoot) {
+      return;
     }
-  });
 
-  window.addEventListener(
-    "scroll",
-    () => {
-      if (timePickerState.activeRoot) {
-        positionTimePicker(timePickerState.activeRoot);
-      }
-    },
-    { passive: true },
-  );
+    if (!isTimePickerInputVisible(activeRoot)) {
+      closeTimePicker(activeRoot);
+      return;
+    }
+
+    positionTimePicker(activeRoot);
+  }
+
+  window.addEventListener("resize", refreshActiveTimePicker);
+
+  // Capture phase so scrolling any ancestor container is handled too.
+  window.addEventListener("scroll", refreshActiveTimePicker, {
+    passive: true,
+    capture: true,
+  });
 
   syncAllTimePickers();
 }
