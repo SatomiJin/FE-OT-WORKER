@@ -85,6 +85,12 @@ const state = {
     selectedUsername: "",
     month: "",
   },
+  feedbackInbox: {
+    items: [],
+    status: "",
+    category: "",
+    loaded: false,
+  },
   timerNoteSaveHandle: 0,
   loading: {
     savingEntry: false,
@@ -95,6 +101,8 @@ const state = {
     creatingProfile: false,
     updatingEmployee: false,
     stoppingTimer: false,
+    feedbackInboxLoading: false,
+    updatingFeedbackIds: new Set(),
   },
 };
 
@@ -153,6 +161,17 @@ const feedbackCancelButton = document.querySelector("#feedbackCancelButton");
 const feedbackSubmitButton = document.querySelector("#feedbackSubmitButton");
 const feedbackIncludeContext = document.querySelector("#feedbackIncludeContext");
 const feedbackContextSummary = document.querySelector("#feedbackContextSummary");
+const feedbackInboxPanel = document.querySelector("#feedbackInboxPanel");
+const feedbackInboxList = document.querySelector("#feedbackInboxList");
+const feedbackInboxStatus = document.querySelector("#feedbackInboxStatus");
+const feedbackInboxCategory = document.querySelector("#feedbackInboxCategory");
+const feedbackInboxReloadButton = document.querySelector(
+  "#feedbackInboxReloadButton",
+);
+const feedbackInboxNewCount = document.querySelector("#feedbackInboxNewCount");
+const feedbackInboxShownCount = document.querySelector(
+  "#feedbackInboxShownCount",
+);
 const themeToggle = document.querySelector("#themeToggle");
 const themeToggleThumb = themeToggle.querySelector(".theme-toggle-thumb");
 const timerStatus = document.querySelector("#timerStatus");
@@ -269,6 +288,22 @@ function getCurrentUserRole() {
 
 function isCurrentUserAdmin() {
   return getCurrentUserRole() === "ADMIN";
+}
+
+function canReadFeedbackInbox() {
+  const meta = state.currentUserMeta ?? {};
+
+  // The backend is the source of truth; the username check is only a fallback
+  // for a backend that predates the canReadFeedback flag.
+  if (typeof meta.canReadFeedback === "boolean") {
+    return meta.canReadFeedback;
+  }
+
+  return meta.profile?.username === FEEDBACK_OWNER_USERNAME;
+}
+
+function isFeedbackInboxLoading() {
+  return state.loading.feedbackInboxLoading;
 }
 
 function isStoppingTimer() {
@@ -1544,6 +1579,7 @@ function renderAdminPanel() {
 }
 
 function renderAll() {
+  renderFeedbackInbox();
   renderProfileList();
   renderProfileMeta();
   renderProfileActions();
@@ -2341,6 +2377,8 @@ themeToggle.addEventListener("click", () => {
 /* ── Feedback widget ───────────────────────────────────────────────────── */
 
 const FEEDBACK_DRAFT_STORAGE_KEY = "ot-feedback-draft";
+// Kept in sync with FEEDBACK_OWNER_USERNAME in the backend's src/server.js.
+const FEEDBACK_OWNER_USERNAME = "trong-dong";
 const FEEDBACK_MAX_LENGTH = 2000;
 const feedbackState = {
   isOpen: false,
@@ -2600,4 +2638,261 @@ function setupFeedbackWidget() {
   renderFeedbackCounter();
 }
 
+/* ── Feedback inbox (owner only) ────────────────────────────── */
+
+const FEEDBACK_INBOX_STATUSES = [
+  { value: "NEW", label: "Mới" },
+  { value: "TRIAGED", label: "Đang xem" },
+  { value: "RESOLVED", label: "Đã xử lý" },
+  { value: "WONT_FIX", label: "Bỏ qua" },
+];
+
+const FEEDBACK_CATEGORY_LABELS = {
+  bug: "🐞 Báo lỗi",
+  idea: "💡 Đề xuất",
+  other: "💬 Khác",
+};
+
+const FEEDBACK_CONTEXT_LABELS = {
+  username: "Username",
+  email: "Email",
+  displayName: "Tên hiển thị",
+  role: "Role",
+  page: "Trang",
+  userAgent: "User agent",
+  appVersion: "Phiên bản",
+  language: "Ngôn ngữ",
+  platform: "Nền tảng",
+  screen: "Màn hình",
+  timezone: "Múi giờ",
+  selectedMonth: "Tháng đang chọn",
+};
+
+function formatFeedbackTimestamp(value) {
+  const parsed = new Date(String(value ?? ""));
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  return parsed.toLocaleString("vi-VN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function renderFeedbackContextDetails(context) {
+  if (!context || typeof context !== "object") {
+    return "";
+  }
+
+  const rows = Object.entries(context)
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(
+      ([key, value]) =>
+        `<div class="feedback-inbox-context-row"><span>${escapeHtml(
+          FEEDBACK_CONTEXT_LABELS[key] ?? key,
+        )}</span><strong>${escapeHtml(value)}</strong></div>`,
+    );
+
+  if (rows.length === 0) {
+    return "";
+  }
+
+  return `<details class="feedback-inbox-context">
+      <summary>Thông tin kỹ thuật</summary>
+      <div class="feedback-inbox-context-grid">${rows.join("")}</div>
+    </details>`;
+}
+
+function renderFeedbackInboxItem(item) {
+  const isUpdating = state.loading.updatingFeedbackIds.has(item.id);
+  const statusOptions = FEEDBACK_INBOX_STATUSES.map(
+    (status) =>
+      `<option value="${status.value}"${
+        status.value === item.status ? " selected" : ""
+      }>${escapeHtml(status.label)}</option>`,
+  ).join("");
+
+  return `<article class="feedback-inbox-item${
+    item.status === "NEW" ? " is-new" : ""
+  }" data-feedback-id="${escapeHtml(item.id)}">
+      <header class="feedback-inbox-item-head">
+        <div>
+          <strong>${escapeHtml(item.username || "(chưa có username)")}</strong>
+          <span class="hint">${escapeHtml(
+            FEEDBACK_CATEGORY_LABELS[item.category] ?? item.category,
+          )} · ${escapeHtml(formatFeedbackTimestamp(item.createdAt))}</span>
+        </div>
+        <label class="feedback-inbox-status-field">
+          <span class="sr-only">Trạng thái</span>
+          <select class="feedback-inbox-item-status"${
+            isUpdating ? " disabled" : ""
+          }>${statusOptions}</select>
+        </label>
+      </header>
+      <p class="feedback-inbox-message">${escapeHtml(item.message)}</p>
+      ${renderFeedbackContextDetails(item.context)}
+      ${
+        item.adminNote
+          ? `<p class="feedback-inbox-note">Ghi chú: ${escapeHtml(
+              item.adminNote,
+            )}</p>`
+          : ""
+      }
+    </article>`;
+}
+
+function renderFeedbackInbox() {
+  if (!feedbackInboxPanel) {
+    return;
+  }
+
+  const canRead = canReadFeedbackInbox();
+  feedbackInboxPanel.hidden = !canRead;
+
+  if (!canRead) {
+    return;
+  }
+
+  const isLoading = isFeedbackInboxLoading();
+
+  if (feedbackInboxStatus) {
+    feedbackInboxStatus.value = state.feedbackInbox.status;
+    feedbackInboxStatus.disabled = isLoading;
+  }
+  if (feedbackInboxCategory) {
+    feedbackInboxCategory.value = state.feedbackInbox.category;
+    feedbackInboxCategory.disabled = isLoading;
+  }
+  if (feedbackInboxReloadButton) {
+    feedbackInboxReloadButton.disabled = isLoading;
+    feedbackInboxReloadButton.innerHTML = isLoading
+      ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang tải...</span>'
+      : "Tải góp ý";
+  }
+
+  const items = state.feedbackInbox.items;
+
+  if (feedbackInboxNewCount) {
+    feedbackInboxNewCount.textContent = String(
+      items.filter((item) => item.status === "NEW").length,
+    );
+  }
+  if (feedbackInboxShownCount) {
+    feedbackInboxShownCount.textContent = String(items.length);
+  }
+
+  if (!feedbackInboxList) {
+    return;
+  }
+
+  if (!state.feedbackInbox.loaded) {
+    feedbackInboxList.innerHTML =
+      '<p class="empty">Nhấn "Tải góp ý" để xem hộp thư.</p>';
+    return;
+  }
+
+  if (items.length === 0) {
+    feedbackInboxList.innerHTML =
+      '<p class="empty">Không có góp ý nào khớp bộ lọc.</p>';
+    return;
+  }
+
+  feedbackInboxList.innerHTML = items.map(renderFeedbackInboxItem).join("");
+}
+
+async function loadFeedbackInbox() {
+  if (!canReadFeedbackInbox() || isFeedbackInboxLoading()) {
+    return;
+  }
+
+  state.loading.feedbackInboxLoading = true;
+  renderFeedbackInbox();
+
+  try {
+    const items = await otApi.fetchFeedbackInbox({
+      status: state.feedbackInbox.status || undefined,
+      category: state.feedbackInbox.category || undefined,
+    });
+
+    state.feedbackInbox.items = items;
+    state.feedbackInbox.loaded = true;
+  } catch (error) {
+    toast(formatRequestError(error, "Không tải được hộp thư góp ý."), "error");
+  } finally {
+    state.loading.feedbackInboxLoading = false;
+    renderFeedbackInbox();
+  }
+}
+
+async function updateFeedbackInboxStatus(feedbackId, status) {
+  if (state.loading.updatingFeedbackIds.has(feedbackId)) {
+    return;
+  }
+
+  state.loading.updatingFeedbackIds.add(feedbackId);
+  renderFeedbackInbox();
+
+  try {
+    const updated = await otApi.updateFeedbackStatus(feedbackId, { status });
+
+    state.feedbackInbox.items = state.feedbackInbox.items.map((item) =>
+      item.id === feedbackId ? { ...item, ...(updated ?? { status }) } : item,
+    );
+
+    // A status filter is active, so a row that no longer matches must drop out.
+    if (state.feedbackInbox.status && state.feedbackInbox.status !== status) {
+      state.feedbackInbox.items = state.feedbackInbox.items.filter(
+        (item) => item.id !== feedbackId,
+      );
+    }
+
+    toast("Đã cập nhật trạng thái góp ý.", "success");
+  } catch (error) {
+    toast(
+      formatRequestError(error, "Không cập nhật được trạng thái góp ý."),
+      "error",
+    );
+  } finally {
+    state.loading.updatingFeedbackIds.delete(feedbackId);
+    renderFeedbackInbox();
+  }
+}
+
+function setupFeedbackInbox() {
+  if (!feedbackInboxPanel) {
+    return;
+  }
+
+  feedbackInboxReloadButton?.addEventListener("click", loadFeedbackInbox);
+
+  feedbackInboxStatus?.addEventListener("change", () => {
+    state.feedbackInbox.status = feedbackInboxStatus.value;
+    loadFeedbackInbox();
+  });
+
+  feedbackInboxCategory?.addEventListener("change", () => {
+    state.feedbackInbox.category = feedbackInboxCategory.value;
+    loadFeedbackInbox();
+  });
+
+  feedbackInboxList?.addEventListener("change", (event) => {
+    const select = event.target;
+
+    if (!select?.classList?.contains("feedback-inbox-item-status")) {
+      return;
+    }
+
+    const feedbackId = select
+      .closest("[data-feedback-id]")
+      ?.getAttribute("data-feedback-id");
+
+    if (feedbackId) {
+      updateFeedbackInboxStatus(feedbackId, select.value);
+    }
+  });
+}
+
 setupFeedbackWidget();
+setupFeedbackInbox();

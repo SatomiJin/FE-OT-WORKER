@@ -168,6 +168,54 @@ export function createOtApiClient({
       });
     },
 
+    async fetchFeedbackInbox({ status, category, limit } = {}) {
+      const params = new URLSearchParams();
+      if (status) {
+        params.set("status", status);
+      }
+      if (category) {
+        params.set("category", category);
+      }
+      if (limit) {
+        params.set("limit", String(limit));
+      }
+
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const payload = await request(`/api/admin/feedback${query}`);
+      const feedback = Array.isArray(payload?.feedback)
+        ? payload.feedback
+        : Array.isArray(payload?.data?.feedback)
+          ? payload.data.feedback
+          : Array.isArray(payload)
+            ? payload
+            : [];
+
+      return feedback;
+    },
+
+    async updateFeedbackStatus(feedbackId, { status, adminNote }) {
+      const body = {};
+      if (status !== undefined) {
+        body.status = status;
+      }
+      if (adminNote !== undefined) {
+        body.adminNote = adminNote;
+      }
+
+      const payload = await request(
+        `/api/admin/feedback/${encodePath(feedbackId)}`,
+        { method: "PUT", body },
+      );
+
+      return payload?.feedback ?? payload ?? null;
+    },
+
+    deleteFeedback(feedbackId) {
+      return request(`/api/admin/feedback/${encodePath(feedbackId)}`, {
+        method: "DELETE",
+      });
+    },
+
     async fetchAdminMembers() {
       const payload = await request("/api/admin/members");
       const members = Array.isArray(payload?.members)

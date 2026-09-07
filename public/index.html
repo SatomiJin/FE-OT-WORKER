@@ -279,6 +279,50 @@
         </div>
       </section>
 
+      <section id="feedbackInboxPanel" class="panel panel-wide feedback-inbox-panel" hidden>
+        <div class="panel-head">
+          <h2>Góp ý · Hộp thư của bạn</h2>
+          <p>Góp ý thành viên gửi lên. Đánh dấu trạng thái để biết cái nào đã xử lý.</p>
+        </div>
+        <div class="admin-controls">
+          <label>
+            Trạng thái
+            <select id="feedbackInboxStatus">
+              <option value="">Tất cả</option>
+              <option value="NEW">Mới</option>
+              <option value="TRIAGED">Đang xem</option>
+              <option value="RESOLVED">Đã xử lý</option>
+              <option value="WONT_FIX">Bỏ qua</option>
+            </select>
+          </label>
+          <label>
+            Loại
+            <select id="feedbackInboxCategory">
+              <option value="">Tất cả</option>
+              <option value="bug">🐞 Báo lỗi</option>
+              <option value="idea">💡 Đề xuất</option>
+              <option value="other">💬 Khác</option>
+            </select>
+          </label>
+          <div class="form-actions admin-actions">
+            <button id="feedbackInboxReloadButton" class="primary" type="button">Tải góp ý</button>
+          </div>
+        </div>
+        <div class="kpi-row">
+          <article class="kpi">
+            <span>Chưa xử lý</span>
+            <strong id="feedbackInboxNewCount">0</strong>
+          </article>
+          <article class="kpi">
+            <span>Đang hiển thị</span>
+            <strong id="feedbackInboxShownCount">0</strong>
+          </article>
+        </div>
+        <div id="feedbackInboxList" class="feedback-inbox-list">
+          <p class="empty">Chưa tải góp ý.</p>
+        </div>
+      </section>
+
       <section class="panel panel-wide">
         <div class="panel-head">
           <h2>Thông tin nhân sự</h2>
