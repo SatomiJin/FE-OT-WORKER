@@ -72,6 +72,7 @@ function formatRequestError(error, fallbackMessage = "Request failed.") {
 replayPersistedDebugLogs("app page");
 
 const state = {
+  booting: true,
   suggestedUsername: "",
   activeUsername: "",
   currentUserMeta: null,
@@ -139,6 +140,7 @@ const sessionAvatar = document.querySelector("#sessionAvatar");
 const sessionAvatarFallback = document.querySelector("#sessionAvatarFallback");
 const loginPageLink = document.querySelector("#loginPageLink");
 const signOutButton = document.querySelector("#signOutButton");
+const bootOverlay = document.querySelector("#bootOverlay");
 const themeToggle = document.querySelector("#themeToggle");
 const themeToggleThumb = themeToggle.querySelector(".theme-toggle-thumb");
 const timerStatus = document.querySelector("#timerStatus");
@@ -195,6 +197,19 @@ function removeProfileFromState(username) {
 
 function getActiveProfile() {
   return state.profiles[state.activeUsername];
+}
+
+function hideBootOverlay() {
+  if (!bootOverlay || bootOverlay.classList.contains("is-hidden")) {
+    return;
+  }
+
+  bootOverlay.classList.add("is-hidden");
+  window.setTimeout(() => bootOverlay.remove(), 400);
+}
+
+function isBooting() {
+  return state.booting === true;
 }
 
 function isSavingEntry() {
@@ -1136,6 +1151,12 @@ function renderEmployeeFormState() {
 }
 
 function renderStats() {
+  if (isBooting() && !getActiveProfile()) {
+    entryCount.textContent = "–";
+    monthHours.textContent = "–";
+    return;
+  }
+
   const entriesForMonth = filteredEntriesForMonth();
   entryCount.textContent = String(entriesForMonth.length);
   const totalMinutes = entriesForMonth.reduce(
@@ -1162,6 +1183,13 @@ function renderTimerPanel() {
   stopTimerButton.innerHTML = isTimerStopping
     ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang dừng và lưu OT...</span>'
     : "Dừng và lưu OT";
+
+  if (!profile && isBooting()) {
+    timerStatus.textContent = "Đang tải trạng thái timer...";
+    timerStartedAt.textContent = "--:--";
+    timerElapsed.textContent = "0p";
+    return;
+  }
 
   if (!profile) {
     timerStatus.textContent = "Chưa có hồ sơ để bấm giờ.";
@@ -1228,10 +1256,32 @@ function renderEntryFormState() {
   }
 }
 
+function buildTableSkeleton(rowCount, columnCount) {
+  const fragment = document.createDocumentFragment();
+
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+    const tr = document.createElement("tr");
+    tr.className = "skeleton-row";
+    for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+      const td = document.createElement("td");
+      td.innerHTML = '<span class="skeleton-bar"></span>';
+      tr.append(td);
+    }
+    fragment.append(tr);
+  }
+
+  return fragment;
+}
+
 function renderTable() {
   const rows = sortEntries(filteredEntriesForMonth());
 
   entryTableBody.innerHTML = "";
+
+  if (rows.length === 0 && isBooting()) {
+    entryTableBody.append(buildTableSkeleton(4, 6));
+    return;
+  }
 
   if (rows.length === 0) {
     entryTableBody.append(emptyStateTemplate.content.cloneNode(true));
@@ -1281,6 +1331,15 @@ function renderTable() {
 
 function renderProfileMeta() {
   const profile = getActiveProfile();
+
+  if (!profile && isBooting()) {
+    activeProfileName.textContent = "Đang tải hồ sơ...";
+    profileHint.textContent =
+      "Đang lấy dữ liệu OT của tài khoản từ máy chủ.";
+    syncUsernameField();
+    return;
+  }
+
   if (!profile) {
     activeProfileName.textContent = "Chưa có hồ sơ";
     profileHint.textContent =
@@ -1830,50 +1889,69 @@ function queueTimerNoteSave() {
   }, 350);
 }
 
+let isRedirectingToLogin = false;
+
 async function loadInitialState() {
   logApp("loadInitialState start", {
     href: window.location.href,
     apiBaseUrl: API_BASE_URL,
   });
-  const session = await requireSession();
-  if (!session) {
-    logApp("No session returned from requireSession");
-    return;
-  }
 
-  logApp("Session ready on app page", {
-    userId: session.user?.id ?? null,
-    email: session.user?.email ?? null,
-  });
-  state.suggestedUsername = getSuggestedUsernameFromSession(session);
-  renderAuthSession(session);
   try {
-    await fetchCurrentUserMeta();
-  } catch (error) {
-    state.currentUserMeta = null;
-    renderAdminExportAction();
-    if (error?.status !== 404) {
-      toast(
-        formatRequestError(error, "Không kiểm tra được quyền admin."),
-        "warning",
-      );
+    const session = await requireSession();
+    if (!session) {
+      // requireSession is already redirecting to the login page: keep the
+      // overlay up so the empty app never flashes on the way out.
+      isRedirectingToLogin = true;
+      logApp("No session returned from requireSession");
+      return;
     }
-  }
 
-  renderAll();
-  if (isCurrentUserAdmin()) {
-    await loadAdminMembers();
-  }
+    logApp("Session ready on app page", {
+      userId: session.user?.id ?? null,
+      email: session.user?.email ?? null,
+    });
+    state.suggestedUsername = getSuggestedUsernameFromSession(session);
+    renderAuthSession(session);
 
-  logApp("Opening profile for signed-in account", {
-    suggestedUsername: state.suggestedUsername,
-  });
-  const opened = await openMyProfile({ silent: true });
-  if (!opened) {
-    renderProfileMeta();
-    logApp("No profile found for signed-in account", {
+    try {
+      await fetchCurrentUserMeta();
+    } catch (error) {
+      state.currentUserMeta = null;
+      renderAdminExportAction();
+      if (error?.status !== 404) {
+        toast(
+          formatRequestError(error, "Không kiểm tra được quyền admin."),
+          "warning",
+        );
+      }
+    }
+
+    if (isCurrentUserAdmin()) {
+      await loadAdminMembers();
+    }
+
+    logApp("Opening profile for signed-in account", {
       suggestedUsername: state.suggestedUsername,
     });
+    const opened = await openMyProfile({ silent: true });
+    if (!opened) {
+      logApp("No profile found for signed-in account", {
+        suggestedUsername: state.suggestedUsername,
+      });
+    }
+  } catch (error) {
+    toast(
+      formatRequestError(error, "Không tải được dữ liệu ban đầu."),
+      "error",
+    );
+  } finally {
+    // Always leave the skeleton state, otherwise a failed boot spins forever.
+    state.booting = false;
+    if (!isRedirectingToLogin) {
+      renderAll();
+      hideBootOverlay();
+    }
   }
 }
 

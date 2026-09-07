@@ -1526,6 +1526,122 @@ tbody tr.is-loading td {
   flex-shrink: 0;
 }
 
+/* ── Boot overlay (covers the gap before the module runs) ── */
+.boot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  background-image: var(--bg-gradient);
+  transition:
+    opacity 260ms ease,
+    visibility 260ms ease;
+}
+
+.boot-overlay.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.boot-card {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  padding: 30px 38px;
+  text-align: center;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.boot-card strong {
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.boot-card .hint {
+  margin: 0;
+  max-width: 260px;
+}
+
+.boot-card .loading-spinner {
+  width: 26px;
+  height: 26px;
+  border-width: 3px;
+  margin-bottom: 3px;
+}
+
+/* ── Initial load skeleton ── */
+@keyframes skeleton-pulse {
+  0% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton-row td {
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
+
+.skeleton-bar {
+  display: block;
+  height: 11px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    90deg,
+    var(--line) 0%,
+    color-mix(in srgb, var(--line) 45%, transparent) 50%,
+    var(--line) 100%
+  );
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+/* Stagger the widths so the block reads as content, not a progress bar. */
+.skeleton-row td:nth-child(1) .skeleton-bar {
+  width: 78%;
+}
+.skeleton-row td:nth-child(2) .skeleton-bar,
+.skeleton-row td:nth-child(3) .skeleton-bar {
+  width: 52%;
+}
+.skeleton-row td:nth-child(4) .skeleton-bar {
+  width: 44%;
+}
+.skeleton-row td:nth-child(5) .skeleton-bar {
+  width: 88%;
+}
+.skeleton-row td:nth-child(6) .skeleton-bar {
+  width: 60%;
+}
+
+.skeleton-row:nth-child(2) .skeleton-bar {
+  animation-delay: 0.12s;
+}
+.skeleton-row:nth-child(3) .skeleton-bar {
+  animation-delay: 0.24s;
+}
+.skeleton-row:nth-child(4) .skeleton-bar {
+  animation-delay: 0.36s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 /* ── Responsive: Tablet 900px ── */
 /* ── Reordered layout: primary panel, table toolbar, advanced section ── */
 .panel-primary {
