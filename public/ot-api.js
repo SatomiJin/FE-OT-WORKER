@@ -157,6 +157,17 @@ export function createOtApiClient({
       return request("/api/me");
     },
 
+    submitFeedback({ category, message, context }) {
+      return request("/api/feedback", {
+        method: "POST",
+        body: {
+          category: String(category ?? "other").trim(),
+          message: String(message ?? "").trim(),
+          context: context ?? null,
+        },
+      });
+    },
+
     async fetchAdminMembers() {
       const payload = await request("/api/admin/members");
       const members = Array.isArray(payload?.members)

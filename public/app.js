@@ -32,7 +32,7 @@ import {
   createAdminOtExportWorkbook,
   createOtExportWorkbook,
 } from "./ot-export.js";
-import { toast, toastConfirm } from "./ui-feedback.js";
+import { confirmAction, toast, toastWithUndo } from "./ui-feedback.js";
 
 const API_BASE_URL = getAuthConfig().apiBaseUrl;
 const APP_LOG_PREFIX = "[OT App]";
@@ -74,6 +74,7 @@ replayPersistedDebugLogs("app page");
 const state = {
   booting: true,
   suggestedUsername: "",
+  sessionUser: null,
   activeUsername: "",
   currentUserMeta: null,
   profiles: {},
@@ -141,6 +142,17 @@ const sessionAvatarFallback = document.querySelector("#sessionAvatarFallback");
 const loginPageLink = document.querySelector("#loginPageLink");
 const signOutButton = document.querySelector("#signOutButton");
 const bootOverlay = document.querySelector("#bootOverlay");
+const feedbackFab = document.querySelector("#feedbackFab");
+const feedbackPanel = document.querySelector("#feedbackPanel");
+const feedbackBackdrop = document.querySelector("#feedbackBackdrop");
+const feedbackForm = document.querySelector("#feedbackForm");
+const feedbackMessage = document.querySelector("#feedbackMessage");
+const feedbackCounter = document.querySelector("#feedbackCounter");
+const feedbackCloseButton = document.querySelector("#feedbackCloseButton");
+const feedbackCancelButton = document.querySelector("#feedbackCancelButton");
+const feedbackSubmitButton = document.querySelector("#feedbackSubmitButton");
+const feedbackIncludeContext = document.querySelector("#feedbackIncludeContext");
+const feedbackContextSummary = document.querySelector("#feedbackContextSummary");
 const themeToggle = document.querySelector("#themeToggle");
 const themeToggleThumb = themeToggle.querySelector(".theme-toggle-thumb");
 const timerStatus = document.querySelector("#timerStatus");
@@ -432,7 +444,9 @@ function syncEmployeeForm() {
 
 function fillEntryForm(entry = null) {
   entryFields.id.value = entry?.id ?? "";
-  entryFields.date.value = entry?.date ?? "";
+  // A blank form defaults to today: manual OT is almost always entered the
+  // same day, so this saves opening the date picker on every new row.
+  entryFields.date.value = entry?.date ?? formatDateInputValue(new Date());
   const start = normalizeTime24h(entry?.startTime ?? "") ?? "";
   const end = normalizeTime24h(entry?.endTime ?? "") ?? "";
   entryFields.startTime.value = start;
@@ -843,6 +857,7 @@ function syncUsernameField() {
 
 function renderAuthSession(session) {
   const user = getUserSnapshot(session);
+  state.sessionUser = user;
   authDisplayName.textContent = user.displayName || user.email || "Người dùng";
   authSessionHint.textContent = user.email || "Đã xác thực";
 
@@ -2091,19 +2106,38 @@ entryTableBody.addEventListener("click", async (event) => {
         return;
       }
 
-      if (
-        !toastConfirm(
-          `Xóa dòng OT ngày ${entry.date} (${entry.startTime} – ${entry.endTime})?`,
-        )
-      ) {
+      const confirmed = await confirmAction(
+        `Xóa dòng OT ngày ${entry.date} (${entry.startTime} – ${entry.endTime})? Bạn vẫn có thể hoàn tác ngay sau đó.`,
+        { title: "Xóa dòng OT" },
+      );
+      if (!confirmed) {
         return;
       }
+
+      // Snapshot before the delete so Hoàn tác can re-create the row.
+      const deletedEntry = {
+        date: entry.date,
+        startTime: entry.startTime,
+        endTime: entry.endTime,
+        note: entry.note ?? "",
+      };
 
       setDeletingEntry(entry.id, true);
       await deleteEntryInApi(profile.username, entry.id);
       await openMyProfile({ silent: true });
       fillEntryForm();
-      toast("Đã xóa dòng OT thành công.", "success");
+      toastWithUndo("Đã xóa dòng OT.", async () => {
+        try {
+          await createEntryInApi(profile.username, deletedEntry);
+          await openMyProfile({ silent: true });
+          toast("Đã hoàn tác, dòng OT được khôi phục.", "success");
+        } catch (error) {
+          toast(
+            formatRequestError(error, "Không hoàn tác được dòng OT."),
+            "error",
+          );
+        }
+      });
     } catch (error) {
       toast(formatRequestError(error, "Không xóa được dòng OT."), "error");
     } finally {
@@ -2159,8 +2193,9 @@ deleteProfileButton.addEventListener("click", async () => {
     return;
   }
 
-  const confirmed = toastConfirm(
-    `Xóa hồ sơ "${profile.username}" trên backend?`,
+  const confirmed = await confirmAction(
+    `Xóa hồ sơ "${profile.username}" trên backend? Toàn bộ dữ liệu OT của hồ sơ này sẽ mất và không thể hoàn tác.`,
+    { title: "Xóa hồ sơ", confirmLabel: "Xóa hồ sơ" },
   );
   if (!confirmed) {
     return;
@@ -2302,3 +2337,285 @@ themeToggle.addEventListener("click", () => {
     localStorage.setItem("ot-theme", "dark");
   }
 });
+
+/* ── Feedback widget ───────────────────────────────────────────────────── */
+
+const FEEDBACK_DRAFT_STORAGE_KEY = "ot-feedback-draft";
+const FEEDBACK_MAX_LENGTH = 2000;
+const feedbackState = {
+  isOpen: false,
+  isSending: false,
+  lastFocusedElement: null,
+  fabCompactHandle: 0,
+};
+
+function buildFeedbackContext() {
+  const profile = getActiveProfile();
+
+  return {
+    username: profile?.username ?? state.suggestedUsername ?? "",
+    email: state.sessionUser?.email ?? "",
+    displayName: state.sessionUser?.displayName ?? "",
+    role: getCurrentUserRole(),
+    page: window.location.pathname,
+    selectedMonth: getSelectedMonth(),
+    entryCount: profile?.entries?.length ?? 0,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    userAgent: navigator.userAgent,
+    submittedAt: new Date().toISOString(),
+  };
+}
+
+function renderFeedbackContextSummary() {
+  if (!feedbackContextSummary) {
+    return;
+  }
+
+  const context = buildFeedbackContext();
+  const parts = [
+    context.email || context.username || "tài khoản hiện tại",
+    `màn hình ${context.viewport}`,
+    `tháng ${context.selectedMonth || "chưa chọn"}`,
+  ];
+  feedbackContextSummary.textContent = parts.join(" · ");
+}
+
+function renderFeedbackCounter() {
+  if (!feedbackCounter || !feedbackMessage) {
+    return;
+  }
+
+  const length = feedbackMessage.value.length;
+  feedbackCounter.textContent = `${length} / ${FEEDBACK_MAX_LENGTH}`;
+  feedbackCounter.classList.toggle(
+    "is-near-limit",
+    length > FEEDBACK_MAX_LENGTH - 100,
+  );
+}
+
+function readFeedbackDraft() {
+  try {
+    const raw = localStorage.getItem(FEEDBACK_DRAFT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveFeedbackDraft() {
+  if (!feedbackMessage || !feedbackForm) {
+    return;
+  }
+
+  const message = feedbackMessage.value.trim();
+  try {
+    if (!message) {
+      localStorage.removeItem(FEEDBACK_DRAFT_STORAGE_KEY);
+      return;
+    }
+
+    localStorage.setItem(
+      FEEDBACK_DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        message: feedbackMessage.value,
+        category: feedbackForm.elements.namedItem("category").value,
+      }),
+    );
+  } catch {
+    // Draft persistence is a convenience only; ignore quota/privacy failures.
+  }
+}
+
+function clearFeedbackDraft() {
+  try {
+    localStorage.removeItem(FEEDBACK_DRAFT_STORAGE_KEY);
+  } catch {
+    // Ignore.
+  }
+}
+
+function restoreFeedbackDraft() {
+  const draft = readFeedbackDraft();
+  if (!draft || !feedbackMessage) {
+    return;
+  }
+
+  feedbackMessage.value = String(draft.message ?? "");
+  const categoryInput = feedbackForm?.querySelector(
+    `input[name="category"][value="${CSS.escape(String(draft.category ?? ""))}"]`,
+  );
+  if (categoryInput) {
+    categoryInput.checked = true;
+  }
+}
+
+function openFeedbackPanel() {
+  if (feedbackState.isOpen || !feedbackPanel) {
+    return;
+  }
+
+  feedbackState.lastFocusedElement = document.activeElement;
+  feedbackState.isOpen = true;
+  feedbackPanel.hidden = false;
+  feedbackBackdrop.hidden = false;
+  feedbackFab.classList.add("is-open");
+  feedbackFab.setAttribute("aria-expanded", "true");
+
+  restoreFeedbackDraft();
+  renderFeedbackCounter();
+  renderFeedbackContextSummary();
+  feedbackMessage.focus();
+}
+
+function closeFeedbackPanel() {
+  if (!feedbackState.isOpen || !feedbackPanel) {
+    return;
+  }
+
+  saveFeedbackDraft();
+  feedbackState.isOpen = false;
+  feedbackPanel.hidden = true;
+  feedbackBackdrop.hidden = true;
+  feedbackFab.classList.remove("is-open");
+  feedbackFab.setAttribute("aria-expanded", "false");
+
+  if (feedbackState.lastFocusedElement instanceof HTMLElement) {
+    feedbackState.lastFocusedElement.focus();
+  } else {
+    feedbackFab.focus();
+  }
+}
+
+function setFeedbackSending(isSending) {
+  feedbackState.isSending = isSending;
+  feedbackSubmitButton.disabled = isSending;
+  feedbackMessage.disabled = isSending;
+  feedbackCancelButton.disabled = isSending;
+  feedbackSubmitButton.innerHTML = isSending
+    ? '<span class="loading-spinner" aria-hidden="true"></span><span>Đang gửi...</span>'
+    : "Gửi góp ý";
+}
+
+function isFeedbackEndpointMissing(error) {
+  // 404/405/501 all mean the route is not wired up on the backend yet.
+  return [404, 405, 501].includes(error?.status);
+}
+
+function isFeedbackDraftWorthKeeping(error) {
+  // Anything that is not a validation rejection is worth retrying later,
+  // so hold on to what the user typed.
+  return error?.status !== 400 && error?.status !== 422;
+}
+
+async function submitFeedback(event) {
+  event.preventDefault();
+
+  if (feedbackState.isSending) {
+    return;
+  }
+
+  const message = feedbackMessage.value.trim();
+  if (!message) {
+    toast("Vui lòng nhập nội dung góp ý.", "warning");
+    feedbackMessage.focus();
+    return;
+  }
+
+  const category = feedbackForm.elements.namedItem("category").value;
+  const context = feedbackIncludeContext.checked
+    ? buildFeedbackContext()
+    : null;
+
+  try {
+    setFeedbackSending(true);
+    await otApi.submitFeedback({ category, message, context });
+    clearFeedbackDraft();
+    feedbackForm.reset();
+    renderFeedbackCounter();
+    closeFeedbackPanel();
+    toast("Đã gửi góp ý tới admin. Cảm ơn bạn!", "success");
+  } catch (error) {
+    // The backend route does not exist yet: keep the draft so nothing is lost
+    // and say so plainly instead of showing a raw 404.
+    if (isFeedbackEndpointMissing(error)) {
+      saveFeedbackDraft();
+      toast(
+        "Kênh góp ý chưa được bật trên máy chủ. Nội dung của bạn đã được lưu tạm trên máy này.",
+        "warning",
+      );
+      return;
+    }
+
+    if (isFeedbackDraftWorthKeeping(error)) {
+      saveFeedbackDraft();
+    }
+    toast(formatRequestError(error, "Không gửi được góp ý."), "error");
+  } finally {
+    setFeedbackSending(false);
+  }
+}
+
+function setupFeedbackWidget() {
+  if (!feedbackFab || !feedbackPanel || !feedbackForm) {
+    return;
+  }
+
+  feedbackFab.addEventListener("click", openFeedbackPanel);
+  feedbackCloseButton.addEventListener("click", closeFeedbackPanel);
+  feedbackCancelButton.addEventListener("click", closeFeedbackPanel);
+  feedbackBackdrop.addEventListener("click", closeFeedbackPanel);
+  feedbackForm.addEventListener("submit", submitFeedback);
+
+  feedbackMessage.addEventListener("input", () => {
+    renderFeedbackCounter();
+    saveFeedbackDraft();
+  });
+
+  feedbackForm.addEventListener("change", (event) => {
+    if (event.target?.name === "category") {
+      saveFeedbackDraft();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!feedbackState.isOpen) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeFeedbackPanel();
+      return;
+    }
+
+    // Ctrl/Cmd+Enter submits without reaching for the mouse.
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      feedbackForm.requestSubmit();
+    }
+  });
+
+  // Shrink to a circle while scrolling so it never blocks the row actions.
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (feedbackState.isOpen) {
+        return;
+      }
+
+      feedbackFab.classList.add("is-compact");
+      window.clearTimeout(feedbackState.fabCompactHandle);
+      feedbackState.fabCompactHandle = window.setTimeout(() => {
+        feedbackFab.classList.remove("is-compact");
+      }, 700);
+    },
+    { passive: true },
+  );
+
+  if (readFeedbackDraft()) {
+    restoreFeedbackDraft();
+  }
+  renderFeedbackCounter();
+}
+
+setupFeedbackWidget();

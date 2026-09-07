@@ -1543,6 +1543,290 @@ tbody tr.is-loading td {
   flex-shrink: 0;
 }
 
+/* ── Feedback FAB + panel ── */
+.feedback-fab {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 9990;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 19px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  transition:
+    background var(--transition),
+    transform 200ms cubic-bezier(0.2, 0, 0, 1),
+    padding 200ms cubic-bezier(0.2, 0, 0, 1),
+    opacity var(--transition);
+}
+
+.feedback-fab:hover {
+  background: var(--accent-hover);
+  transform: translateY(-2px);
+}
+
+.feedback-fab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.feedback-fab-icon {
+  flex: none;
+}
+
+.feedback-fab-label {
+  white-space: nowrap;
+  max-width: 90px;
+  overflow: hidden;
+  transition:
+    max-width 200ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 150ms ease;
+}
+
+/* Collapse to a circle while scrolling so it stops covering table actions. */
+.feedback-fab.is-compact {
+  padding: 13px;
+}
+
+.feedback-fab.is-compact .feedback-fab-label {
+  max-width: 0;
+  opacity: 0;
+}
+
+.feedback-fab.is-open {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.feedback-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9991;
+  background: rgba(15, 10, 6, 0.42);
+  backdrop-filter: blur(2px);
+  animation: feedback-fade-in 180ms ease;
+}
+
+@keyframes feedback-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes feedback-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.feedback-panel {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 9992;
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 44px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 22px 22px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-lg);
+  animation: feedback-panel-in 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.feedback-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.feedback-panel-head h2 {
+  margin: 0 0 3px;
+  font-size: 1.02rem;
+}
+
+.feedback-panel-head .hint {
+  margin: 0;
+}
+
+.feedback-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.feedback-close:hover {
+  background: var(--danger-muted);
+  color: var(--danger);
+}
+
+.feedback-form {
+  display: grid;
+  gap: 15px;
+}
+
+.feedback-categories {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.feedback-categories legend {
+  padding: 0;
+  margin-bottom: 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-sub);
+}
+
+.feedback-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.feedback-chip {
+  position: relative;
+  cursor: pointer;
+}
+
+.feedback-chip input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.feedback-chip span {
+  display: inline-block;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--chip-bg);
+  color: var(--text-sub);
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition:
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition);
+}
+
+.feedback-chip input:checked + span {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.feedback-chip input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.feedback-message-field {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.feedback-counter {
+  justify-self: end;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.feedback-counter.is-near-limit {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.feedback-context-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--meta-bg);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.feedback-context-toggle input {
+  margin-top: 2px;
+  width: auto;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.feedback-context-toggle .hint {
+  display: block;
+  margin: 3px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+@media (max-width: 600px) {
+  .feedback-fab {
+    right: 14px;
+    bottom: 14px;
+  }
+
+  .feedback-panel {
+    right: 8px;
+    left: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: calc(100vh - 16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feedback-panel,
+  .feedback-backdrop {
+    animation: none;
+  }
+
+  .feedback-fab {
+    transition: background var(--transition);
+  }
+}
+
 /* ── Boot overlay (covers the gap before the module runs) ── */
 .boot-overlay {
   position: fixed;
@@ -2114,4 +2398,110 @@ tbody tr.is-loading td {
   .advanced-body {
     padding: 18px 16px 20px;
   }
+}
+
+/* ── Confirm dialog (replaces window.confirm) ── */
+.confirm-dialog {
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  background: var(--bg-subtle);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  max-width: min(420px, calc(100vw - 32px));
+  width: 100%;
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(20, 12, 6, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.confirm-dialog[open] {
+  animation: confirm-dialog-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes confirm-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.confirm-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+}
+
+.confirm-dialog-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.confirm-dialog-message {
+  margin: 0;
+  color: var(--text-sub);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* The destructive action is the primary button here, so it gets solid fill
+   rather than the subtle tint .danger uses for inline table buttons. */
+.confirm-dialog-actions .danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+  font-weight: 700;
+}
+
+.confirm-dialog-actions .danger:hover:not(:disabled) {
+  background: #8f2424;
+  border-color: #8f2424;
+  box-shadow: 0 4px 16px rgba(176, 48, 48, 0.35);
+}
+
+[data-theme="dark"] .confirm-dialog-actions .danger {
+  color: #1a1210;
+}
+
+[data-theme="dark"] .confirm-dialog-actions .danger:hover:not(:disabled) {
+  background: #f47878;
+  border-color: #f47878;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+/* ── Undo toast ── */
+.toast-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.toast-undo-button {
+  min-height: unset;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.toast-undo-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.28);
 }
