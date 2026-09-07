@@ -20,6 +20,8 @@ const OT_EXPORT_HEADERS = [
 const OT_EXPORT_COLUMN_WIDTHS = [
   16.75, 16.75, 22.13, 22.13, 36.63, 16.75, 16.75, 16.75, 94.75,
 ];
+// Explicit day-first pattern so the file reads the same in every Excel locale.
+const OT_EXPORT_DATE_FORMAT = "dd/mm/yyyy";
 const OT_EXPORT_COLORS = {
   headerText: "FF914D4F",
   dateFill: "FFB7E1CD",
@@ -63,8 +65,15 @@ function createOtExportCellStyle(overrides = {}) {
 }
 
 function parseExcelCompatibleDate(value) {
+  // ExcelJS turns a JS Date into a serial number using UTC epoch math, so a
+  // local-midnight Date in a non-UTC timezone lands on the previous day with a
+  // fractional part (e.g. UTC+7 gives 46271.708 instead of 46271). Excel then
+  // sees a date-time rather than a plain date and ignores the numFmt. Building
+  // the Date at UTC midnight keeps the serial whole and the day correct.
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    return new Date(
+      Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()),
+    );
   }
 
   const match = String(value ?? "")
@@ -77,7 +86,7 @@ function parseExcelCompatibleDate(value) {
   const year = Number(match[1]);
   const monthIndex = Number(match[2]) - 1;
   const day = Number(match[3]);
-  const date = new Date(year, monthIndex, day);
+  const date = new Date(Date.UTC(year, monthIndex, day));
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -330,7 +339,7 @@ function applyOtExportDataStyles(row) {
         pattern: "solid",
         fgColor: { argb: OT_EXPORT_COLORS.dateFill },
       };
-      cell.numFmt = "mm/dd/yyyy";
+      cell.numFmt = OT_EXPORT_DATE_FORMAT;
     }
 
     if (columnNumber === 6 || columnNumber === 7) {
