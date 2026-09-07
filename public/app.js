@@ -524,8 +524,11 @@ function syncAllTimePickers() {
 
 function scrollSelectedOptionIntoView(root) {
   root.querySelectorAll(".time-picker-option.is-selected").forEach((option) => {
+    // Jump straight to the selected option: the global `scroll-behavior:
+    // smooth` would otherwise animate this every time the picker opens.
     option.scrollIntoView({
       block: "nearest",
+      behavior: "instant",
     });
   });
 }

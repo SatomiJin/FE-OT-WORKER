@@ -129,6 +129,17 @@
   box-sizing: border-box;
 }
 
+html {
+  /* Smooth scrolling for in-page jumps (scrollIntoView, anchors). */
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -136,6 +147,10 @@ body {
   font-size: 15px;
   color: var(--text);
   background: var(--bg-gradient);
+  /* Lock the backdrop to the viewport so only the content scrolls. */
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
   transition:
     background 300ms ease,
     color 300ms ease;
@@ -1093,6 +1108,8 @@ select option {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   -webkit-overflow-scrolling: touch;
+  /* Horizontal swipes stay inside the table instead of pulling the page. */
+  overscroll-behavior-x: contain;
 }
 
 table {
