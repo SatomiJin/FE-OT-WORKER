@@ -15,12 +15,14 @@ import {
   formatTimeInputValue,
   getEntriesForMonth,
   getWeekdayLabel,
+  isOvernightRange,
   minutesBetween,
   normalizeSheetName,
   normalizeTime24h,
   pad,
   sanitizeProfile,
   sanitizeTimer,
+  shiftDateByDays,
   slugifyUsername,
   splitEntriesAcrossMidnight,
   splitEntryAcrossMidnight,
@@ -122,6 +124,7 @@ const adminEntryTableBody = document.querySelector("#adminEntryTableBody");
 const importJsonInput = document.querySelector("#importJsonInput");
 const importJsonButton = document.querySelector("#importJsonButton");
 const resetFormButton = document.querySelector("#resetFormButton");
+const entryFormHint = document.querySelector("#entryFormHint");
 const createProfileButton = document.querySelector("#createProfileButton");
 const deleteProfileButton = document.querySelector("#deleteProfileButton");
 const entryCount = document.querySelector("#entryCount");
@@ -305,11 +308,11 @@ function setStoppingTimer(isLoading) {
   renderTimerPanel();
 }
 
-function requireActiveProfile(actionLabel = "thuc hien thao tac nay") {
+function requireActiveProfile(actionLabel = "thực hiện thao tác này") {
   const profile = getActiveProfile();
   if (!profile) {
     throw new Error(
-      `Chua mo duoc ho so OT cua account hien tai, nen khong the ${actionLabel}. Hay bam "Tai ho so cua toi" truoc.`,
+      `Chưa mở được hồ sơ OT của bạn nên không thể ${actionLabel}. Mở mục Nâng cao rồi bấm "Tải lại hồ sơ".`,
     );
   }
 
@@ -421,6 +424,37 @@ function fillEntryForm(entry = null) {
   entryFields.endTime.value = end;
   entryFields.note.value = entry?.note ?? "";
   syncAllTimePickers();
+  renderEntryFormHint();
+}
+
+function renderEntryFormHint() {
+  if (!entryFormHint) {
+    return;
+  }
+
+  const date = entryFields.date.value;
+  const startTime = normalizeTime24h(entryFields.startTime.value);
+  const endTime = normalizeTime24h(entryFields.endTime.value);
+
+  if (!startTime || !endTime) {
+    entryFormHint.hidden = true;
+    entryFormHint.textContent = "";
+    return;
+  }
+
+  const duration = formatDurationMinutes(minutesBetween(startTime, endTime));
+
+  if (!isOvernightRange(startTime, endTime)) {
+    entryFormHint.hidden = false;
+    entryFormHint.textContent = `Tổng thời gian OT: ${duration}.`;
+    return;
+  }
+
+  const nextDate = date ? shiftDateByDays(date, 1) : "";
+  entryFormHint.hidden = false;
+  entryFormHint.textContent = nextDate
+    ? `Ca qua đêm (${duration}). Dòng OT sẽ được tách thành ${date} ${startTime}–24:00 và ${nextDate} 00:00–${endTime}.`
+    : `Ca qua đêm (${duration}). Dòng OT sẽ được tách làm hai theo mốc nửa đêm.`;
 }
 
 function getTimeParts(timeText) {
@@ -1229,13 +1263,13 @@ function renderProfileMeta() {
   if (!profile) {
     activeProfileName.textContent = "Chưa có hồ sơ";
     profileHint.textContent =
-      "Account đang nhập hiện tại chưa có hồ sơ OT. Có thể đặt username và tạo hồ sơ mới.";
+      "Tài khoản này chưa có hồ sơ OT. Mở mục Nâng cao để đặt username và tạo hồ sơ mới.";
     syncUsernameField();
     return;
   }
 
   activeProfileName.textContent = profile.employee.fullName || profile.username;
-  profileHint.textContent = `Dang hien thi duy nhat ho so OT cua account dang nhap tren backend ${API_BASE_URL}. JSON export chi dung de backup thu cong.`;
+  profileHint.textContent = `Hồ sơ OT của tài khoản đang đăng nhập. File JSON chỉ dùng để backup thủ công.`;
   syncUsernameField();
 }
 
@@ -1884,7 +1918,7 @@ entryForm.addEventListener("submit", async (event) => {
   }
 
   try {
-    const profile = requireActiveProfile("luu dong OT");
+    const profile = requireActiveProfile("lưu dòng OT");
     setSavingEntry(
       true,
       entry.id ? "Đang cập nhật dòng OT..." : "Đang thêm dòng OT mới...",
@@ -1943,7 +1977,7 @@ entryTableBody.addEventListener("click", async (event) => {
     }
 
     try {
-      const profile = requireActiveProfile("xoa dong OT");
+      const profile = requireActiveProfile("xóa dòng OT");
       const entry = profile.entries.find(
         (item) => item.id === button.dataset.id,
       );
@@ -1973,6 +2007,17 @@ entryTableBody.addEventListener("click", async (event) => {
     } finally {
       setDeletingEntry(button.dataset.id, false);
     }
+  }
+});
+
+entryForm.addEventListener("change", (event) => {
+  const target = event.target;
+  if (
+    target === entryFields.date ||
+    target === entryFields.startTime ||
+    target === entryFields.endTime
+  ) {
+    renderEntryFormHint();
   }
 });
 
