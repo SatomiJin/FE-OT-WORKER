@@ -1350,7 +1350,7 @@ function renderTable() {
     const tr = document.createElement("tr");
     tr.classList.toggle("is-loading", isRowDeleting);
     tr.innerHTML = `
-      <td>
+      <td data-label="Thứ / ngày">
         <span class="row-status row-status--date">
           ${isRowDeleting ? '<span class="loading-spinner" aria-hidden="true"></span>' : ""}
           <span class="date-stack">
@@ -1359,11 +1359,11 @@ function renderTable() {
           </span>
         </span>
       </td>
-      <td>${entry.startTime}</td>
-      <td>${entry.endTime}</td>
-      <td><span class="hours-badge">${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</span></td>
-      <td>${escapeHtml(entry.note || "")}</td>
-      <td>
+      <td data-label="Bắt đầu">${entry.startTime}</td>
+      <td data-label="Kết thúc">${entry.endTime}</td>
+      <td data-label="Tổng giờ"><span class="hours-badge">${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</span></td>
+      <td data-label="Giải trình">${escapeHtml(entry.note || "—")}</td>
+      <td data-label="Thao tác">
         <div class="row-actions">
           <button class="edit" data-id="${entry.id}" type="button" ${isRowDeleting ? "disabled" : ""}>
             <span class="row-action-label">✎ Sửa</span>
@@ -2229,9 +2229,27 @@ deleteProfileButton.addEventListener("click", async () => {
     return;
   }
 
+  const acknowledged = await confirmAction(
+    `Bạn sắp xóa toàn bộ dữ liệu OT của hồ sơ "${profile.username}" trên backend. Thao tác này không thể hoàn tác.`,
+    {
+      title: "Xóa toàn bộ hồ sơ?",
+      confirmLabel: "Tiếp tục",
+      cancelLabel: "Giữ lại hồ sơ",
+    },
+  );
+  if (!acknowledged) {
+    return;
+  }
+
   const confirmed = await confirmAction(
-    `Xóa hồ sơ "${profile.username}" trên backend? Toàn bộ dữ liệu OT của hồ sơ này sẽ mất và không thể hoàn tác.`,
-    { title: "Xóa hồ sơ", confirmLabel: "Xóa hồ sơ" },
+    `Nhập đúng username để xác nhận xóa vĩnh viễn hồ sơ và toàn bộ dòng OT của nó.`,
+    {
+      title: "Xác nhận xóa vĩnh viễn",
+      confirmLabel: "Xóa vĩnh viễn",
+      cancelLabel: "Hủy",
+      confirmationText: profile.username,
+      confirmationLabel: `Nhập ${profile.username} để tiếp tục`,
+    },
   );
   if (!confirmed) {
     return;

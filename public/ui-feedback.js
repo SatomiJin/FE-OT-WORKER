@@ -94,6 +94,10 @@ function buildConfirmDialog() {
     <form method="dialog" class="confirm-dialog-form">
       <h2 class="confirm-dialog-title" data-role="title"></h2>
       <p class="confirm-dialog-message" data-role="message"></p>
+      <label class="confirm-dialog-verification" data-role="verification" hidden>
+        <span data-role="verification-label"></span>
+        <input type="text" autocomplete="off" spellcheck="false" data-role="verification-input" />
+      </label>
       <div class="confirm-dialog-actions">
         <button type="submit" value="cancel" class="ghost" data-role="cancel"></button>
         <button type="submit" value="confirm" class="danger" data-role="confirm"></button>
@@ -115,30 +119,59 @@ export function confirmAction(
     confirmLabel = "Xóa",
     cancelLabel = "Hủy",
     danger = true,
+    confirmationText = "",
+    confirmationLabel = "",
   } = {},
 ) {
   if (typeof HTMLDialogElement === "undefined") {
-    return Promise.resolve(window.confirm(message));
+    if (!window.confirm(message)) {
+      return Promise.resolve(false);
+    }
+    if (!confirmationText) {
+      return Promise.resolve(true);
+    }
+    return Promise.resolve(
+      window.prompt(confirmationLabel || "Nhập nội dung xác nhận")?.trim() ===
+        confirmationText,
+    );
   }
 
   confirmDialog ??= buildConfirmDialog();
   const dialog = confirmDialog;
   const confirmButton = dialog.querySelector('[data-role="confirm"]');
   const cancelButton = dialog.querySelector('[data-role="cancel"]');
+  const verification = dialog.querySelector('[data-role="verification"]');
+  const verificationLabelElement = dialog.querySelector('[data-role="verification-label"]');
+  const verificationInput = dialog.querySelector('[data-role="verification-input"]');
+  const needsVerification = Boolean(confirmationText);
 
   dialog.querySelector('[data-role="title"]').textContent = title;
   dialog.querySelector('[data-role="message"]').textContent = message;
   confirmButton.textContent = confirmLabel;
   cancelButton.textContent = cancelLabel;
   confirmButton.classList.toggle("danger", danger);
+  verification.hidden = !needsVerification;
+  verificationLabelElement.textContent = confirmationLabel;
+  verificationInput.value = "";
+  // Do not mark this required: the cancel button is also a form submitter and
+  // native constraint validation would otherwise prevent cancelling the dialog.
+  verificationInput.required = false;
+  const syncConfirmationState = () => {
+    confirmButton.disabled = needsVerification && verificationInput.value.trim() !== confirmationText;
+  };
+  verificationInput.addEventListener("input", syncConfirmationState);
+  syncConfirmationState();
 
   return new Promise((resolve) => {
     dialog.addEventListener(
       "close",
-      () => resolve(dialog.returnValue === "confirm"),
+      () => {
+        verificationInput.removeEventListener("input", syncConfirmationState);
+        resolve(dialog.returnValue === "confirm");
+      },
       { once: true },
     );
     dialog.showModal();
-    cancelButton.focus();
+    (needsVerification ? verificationInput : cancelButton).focus();
   });
 }

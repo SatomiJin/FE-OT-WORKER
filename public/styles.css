@@ -610,8 +610,9 @@ button:active:not(:disabled) {
 }
 
 .panel-head h2 {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: clamp(1.15rem, 1.5vw, 1.35rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 
@@ -1032,6 +1033,7 @@ select option {
   font-weight: 800;
   color: var(--accent);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Profile meta ── */
@@ -1265,6 +1267,7 @@ tbody tr.is-loading td {
   color: var(--accent);
   font-weight: 700;
   font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
 }
 
 
@@ -2099,6 +2102,44 @@ tbody tr.is-loading td {
   color: var(--danger);
 }
 
+.danger-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.danger-warning::before {
+  content: "!";
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.advanced-block--danger .danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.advanced-block--danger .danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 82%, #000);
+  border-color: color-mix(in srgb, var(--danger) 82%, #000);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--danger) 42%, transparent);
+}
+
 /* ── Responsive: Tablet 900px ── */
 @media (max-width: 900px) {
   .hero {
@@ -2436,6 +2477,29 @@ tbody tr.is-loading td {
   line-height: 1.5;
 }
 
+.confirm-dialog-verification {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--line));
+  border-radius: var(--radius-md);
+  background: var(--danger-muted);
+  color: var(--text-sub);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.confirm-dialog-verification input {
+  min-height: 40px;
+  background: var(--input-bg);
+}
+
+.confirm-dialog-actions .danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
 /* The destructive action is the primary button here, so it gets solid fill
    rather than the subtle tint .danger uses for inline table buttons. */
 .confirm-dialog-actions .danger {
@@ -2610,5 +2674,106 @@ tbody tr.is-loading td {
 
   .feedback-inbox-status-field select {
     width: 100%;
+  }
+}
+
+/* Personal OT records become scan-friendly cards on a phone. The admin table
+   intentionally keeps its dense horizontal layout because it compares people. */
+@media (max-width: 600px) {
+  .entry-table-wrap {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .entry-table-wrap .table-scroll-hint {
+    display: none;
+  }
+
+  .entry-table {
+    display: block;
+    min-width: 0;
+  }
+
+  .entry-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .entry-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .entry-table tbody tr:not(.skeleton-row) {
+    display: grid;
+    padding: 6px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--meta-bg);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .entry-table td {
+    display: grid;
+    grid-template-columns: minmax(6.6rem, 42%) minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+    text-align: right;
+  }
+
+  .entry-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .entry-table td:first-child {
+    align-items: start;
+  }
+
+  .entry-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .entry-table .row-status--date,
+  .entry-table .row-actions {
+    justify-self: end;
+  }
+
+  .entry-table .row-actions {
+    width: 100%;
+  }
+
+  .entry-table .row-actions button {
+    flex: 1;
+  }
+
+  .entry-table td.empty {
+    display: block;
+    padding: 28px 12px;
+    border: 0;
+    text-align: center;
+  }
+
+  .entry-table td.empty::before,
+  .entry-table .skeleton-row td::before {
+    content: none;
+  }
+
+  .entry-table .skeleton-row td {
+    display: block;
+    padding: 12px 0;
   }
 }
