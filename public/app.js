@@ -1470,18 +1470,18 @@ function renderAdminTable() {
     const weekdayLabel = getWeekdayLabel(entry.date);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${escapeHtml(displayName)}</td>
-      <td>${escapeHtml(employee.employeeCode || "")}</td>
-      <td>
+      <td data-label="Thành viên">${escapeHtml(displayName)}</td>
+      <td data-label="MSNV">${escapeHtml(employee.employeeCode || "—")}</td>
+      <td data-label="Thứ / ngày">
         <span class="date-stack">
           ${weekdayLabel ? `<span class="weekday-badge">${escapeHtml(weekdayLabel)}</span>` : ""}
           <span class="date-value">${escapeHtml(entry.date)}</span>
         </span>
       </td>
-      <td>${escapeHtml(entry.startTime)}</td>
-      <td>${escapeHtml(entry.endTime)}</td>
-      <td><span class="hours-badge">${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</span></td>
-      <td>${escapeHtml(entry.note || "")}</td>
+      <td data-label="Bắt đầu">${escapeHtml(entry.startTime)}</td>
+      <td data-label="Kết thúc">${escapeHtml(entry.endTime)}</td>
+      <td data-label="Tổng giờ"><span class="hours-badge">${formatDurationMinutes(minutesBetween(entry.startTime, entry.endTime))}</span></td>
+      <td data-label="Giải trình">${escapeHtml(entry.note || "—")}</td>
     `;
     fragment.append(tr);
   });

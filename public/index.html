@@ -55,14 +55,20 @@
         <div class="hero-actions">
           <button id="exportButton" class="primary">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            Xuất Excel tháng này
+            Xuất Excel của tôi
           </button>
         </div>
       </div>
     </header>
 
+    <nav class="section-nav" aria-label="Điều hướng nhanh">
+      <a href="#timerSection">Timer</a>
+      <a href="#entriesSection">Dòng OT</a>
+      <a href="#settingsSection">Cài đặt</a>
+    </nav>
+
     <main class="grid">
-      <section class="panel panel-wide panel-primary">
+      <section id="timerSection" class="panel panel-wide panel-primary">
         <div class="panel-head">
           <h2>Bấm giờ OT</h2>
           <p>Bắt đầu khi vào ca, dừng khi xong. Dòng OT sẽ được tạo tự động.</p>
@@ -96,7 +102,7 @@
         </section>
       </section>
 
-      <section class="panel panel-wide">
+      <section id="entriesSection" class="panel panel-wide">
         <div class="panel-head">
           <h2>Thêm hoặc sửa dòng OT</h2>
           <p>Nhập thủ công khi quên bấm giờ, hoặc chọn một dòng trong bảng để sửa.</p>
@@ -232,7 +238,7 @@
           </label>
           <div class="form-actions admin-actions">
             <button id="adminLoadButton" class="primary" type="button">Xem OT</button>
-            <button id="adminExportButton" class="secondary" type="button" hidden>Xuất Excel toàn bộ</button>
+            <button id="adminExportButton" class="secondary" type="button" hidden>Xuất Excel toàn team</button>
           </div>
         </div>
         <div class="profile-meta admin-meta">
@@ -258,7 +264,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             Vuốt ngang để xem thêm
           </p>
-          <table>
+          <table class="admin-entry-table">
             <thead>
               <tr>
                 <th>Thành viên</th>
@@ -323,7 +329,7 @@
         </div>
       </section>
 
-      <section class="panel panel-wide">
+      <section id="settingsSection" class="panel panel-wide">
         <div class="panel-head">
           <h2>Thông tin nhân sự</h2>
           <p>Các thông tin này đi vào phần header khi bạn xuất file Excel.</p>
