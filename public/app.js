@@ -530,18 +530,17 @@ function renderEntryFormHint() {
 
   if (!entryFields.splitOvernight.checked) {
     entryFormHint.hidden = false;
-    entryFormHint.textContent = `Ca qua đêm (${duration}). Dòng OT sẽ được ghi nhận thành một dòng duy nhất ${date || ""} ${startTime}–${endTime}.`.replace(
-      /\s+/g,
-      " ",
-    );
+    entryFormHint.textContent = date
+      ? `Ca qua đêm (${duration}). Ghi nhận 1 dòng: ${date} ${startTime}–${endTime}.`
+      : `Ca qua đêm (${duration}). Ghi nhận thành một dòng duy nhất.`;
     return;
   }
 
   const nextDate = date ? shiftDateByDays(date, 1) : "";
   entryFormHint.hidden = false;
   entryFormHint.textContent = nextDate
-    ? `Ca qua đêm (${duration}). Dòng OT sẽ được tách thành ${date} ${startTime}–24:00 và ${nextDate} 00:00–${endTime}.`
-    : `Ca qua đêm (${duration}). Dòng OT sẽ được tách làm hai theo mốc nửa đêm.`;
+    ? `Ca qua đêm (${duration}). Tách 2 dòng: ${date} ${startTime}–24:00 và ${nextDate} 00:00–${endTime}.`
+    : `Ca qua đêm (${duration}). Tách làm hai theo mốc nửa đêm.`;
 }
 
 function getTimeParts(timeText) {
