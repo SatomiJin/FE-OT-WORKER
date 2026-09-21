@@ -244,10 +244,14 @@ export function isEntryInMonth(entry, month) {
   return String(entry?.date ?? "").startsWith(normalizedMonth);
 }
 
-export function getEntriesForMonth(entries, month, options = {}) {
-  return splitEntriesAcrossMidnight(entries, options).filter((entry) =>
-    isEntryInMonth(entry, month),
-  );
+// Entries are already split at save time when the user asks for it, so reading
+// paths must not split again: a row the user deliberately kept whole would be
+// torn apart in the table and the Excel export.
+export function getEntriesForMonth(entries, month) {
+  const sourceEntries = Array.isArray(entries) ? entries : [];
+  return sourceEntries
+    .map((entry) => sanitizeEntry(entry))
+    .filter((entry) => isEntryInMonth(entry, month));
 }
 
 export function normalizeTime24h(value) {

@@ -24,7 +24,6 @@ import {
   sanitizeTimer,
   shiftDateByDays,
   slugifyUsername,
-  splitEntriesAcrossMidnight,
   splitEntryAcrossMidnight,
 } from "./domain.js";
 import { createOtApiClient, mergeProfilesByUsername } from "./ot-api.js";
@@ -135,6 +134,7 @@ const importJsonInput = document.querySelector("#importJsonInput");
 const importJsonButton = document.querySelector("#importJsonButton");
 const resetFormButton = document.querySelector("#resetFormButton");
 const entryFormHint = document.querySelector("#entryFormHint");
+const entrySplitField = document.querySelector("#entrySplitField");
 const createProfileButton = document.querySelector("#createProfileButton");
 const deleteProfileButton = document.querySelector("#deleteProfileButton");
 const entryCount = document.querySelector("#entryCount");
@@ -188,6 +188,7 @@ const employeeFields = {
 };
 const entryFields = {
   id: entryForm.elements.namedItem("id"),
+  splitOvernight: entryForm.elements.namedItem("splitOvernight"),
   date: entryForm.elements.namedItem("date"),
   startTime: entryForm.elements.namedItem("startTime"),
   endTime: entryForm.elements.namedItem("endTime"),
@@ -487,6 +488,9 @@ function fillEntryForm(entry = null) {
   entryFields.startTime.value = start;
   entryFields.endTime.value = end;
   entryFields.note.value = entry?.note ?? "";
+  // Splitting is the safe default: it keeps every row inside one calendar day,
+  // which is what the Excel template expects.
+  entryFields.splitOvernight.checked = true;
   syncAllTimePickers();
   renderEntryFormHint();
 }
@@ -499,6 +503,16 @@ function renderEntryFormHint() {
   const date = entryFields.date.value;
   const startTime = normalizeTime24h(entryFields.startTime.value);
   const endTime = normalizeTime24h(entryFields.endTime.value);
+  const isOvernight =
+    Boolean(startTime) &&
+    Boolean(endTime) &&
+    isOvernightRange(startTime, endTime);
+
+  // The checkbox only matters for an overnight range, so it stays out of the
+  // way until the chosen times actually cross midnight.
+  if (entrySplitField) {
+    entrySplitField.hidden = !isOvernight;
+  }
 
   if (!startTime || !endTime) {
     entryFormHint.hidden = true;
@@ -508,9 +522,18 @@ function renderEntryFormHint() {
 
   const duration = formatDurationMinutes(minutesBetween(startTime, endTime));
 
-  if (!isOvernightRange(startTime, endTime)) {
+  if (!isOvernight) {
     entryFormHint.hidden = false;
     entryFormHint.textContent = `Tổng thời gian OT: ${duration}.`;
+    return;
+  }
+
+  if (!entryFields.splitOvernight.checked) {
+    entryFormHint.hidden = false;
+    entryFormHint.textContent = `Ca qua đêm (${duration}). Dòng OT sẽ được ghi nhận thành một dòng duy nhất ${date || ""} ${startTime}–${endTime}.`.replace(
+      /\s+/g,
+      " ",
+    );
     return;
   }
 
@@ -1290,6 +1313,7 @@ function renderEntryFormState() {
   entryFields.note.disabled = isBusy;
   entryFields.startTime.disabled = isBusy;
   entryFields.endTime.disabled = isBusy;
+  entryFields.splitOvernight.disabled = isBusy;
   resetFormButton.disabled = isBusy;
 
   const submitButton = entryForm.querySelector('button[type="submit"]');
@@ -1621,8 +1645,8 @@ async function downloadExcel() {
     exportMonthInput.value = month;
   }
   const profile = exportableProfile(refreshedProfile);
-  const exportRecords = splitEntriesAcrossMidnight(profile.entries).filter(
-    (entry) => entry.date.startsWith(month),
+  const exportRecords = profile.entries.filter((entry) =>
+    entry.date.startsWith(month),
   );
 
   if (!window.ExcelJS?.Workbook) {
@@ -1855,7 +1879,9 @@ async function importProfileFromFile(file) {
 
       mergeProfile(await updateProfileInApi(profile));
 
-      for (const entry of splitEntriesAcrossMidnight(profile.entries)) {
+      // Imported rows are kept exactly as the file has them: the file already
+      // reflects whether the author wanted overnight shifts split.
+      for (const entry of profile.entries) {
         await createEntryInApi(profile.username, entry);
       }
 
@@ -2065,6 +2091,7 @@ entryForm.addEventListener("submit", async (event) => {
     endTime: normalizedEndTime,
     note: entryFields.note.value.trim(),
   };
+  const shouldSplitOvernight = entryFields.splitOvernight.checked;
 
   if (!entry.date || !entry.startTime || !entry.endTime) {
     return;
@@ -2076,9 +2103,11 @@ entryForm.addEventListener("submit", async (event) => {
       true,
       entry.id ? "Đang cập nhật dòng OT..." : "Đang thêm dòng OT mới...",
     );
-    const entriesToSave = splitEntryAcrossMidnight(entry, {
-      preserveIdOnFirstSegment: Boolean(entry.id),
-    });
+    const entriesToSave = shouldSplitOvernight
+      ? splitEntryAcrossMidnight(entry, {
+          preserveIdOnFirstSegment: Boolean(entry.id),
+        })
+      : [entry];
     if (entry.id) {
       await updateEntryInApi(profile.username, entry.id, entriesToSave[0]);
       for (const extraEntry of entriesToSave.slice(1)) {
@@ -2187,7 +2216,8 @@ entryForm.addEventListener("change", (event) => {
   if (
     target === entryFields.date ||
     target === entryFields.startTime ||
-    target === entryFields.endTime
+    target === entryFields.endTime ||
+    target === entryFields.splitOvernight
   ) {
     renderEntryFormHint();
   }

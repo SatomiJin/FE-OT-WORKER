@@ -1017,8 +1017,36 @@ select option {
 }
 
 .note-field,
+.entry-split-field,
 .form-actions {
   grid-column: 1 / -1;
+}
+
+.entry-split-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--secondary-muted);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.entry-split-field[hidden] {
+  display: none;
+}
+
+.entry-split-field input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 /* ── KPI cards ── */
