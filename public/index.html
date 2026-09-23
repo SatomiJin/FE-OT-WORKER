@@ -493,10 +493,14 @@
       </label>
 
       <label class="feedback-context-toggle">
-        <input type="checkbox" id="feedbackIncludeContext" checked />
-        <span>
+        <span class="feedback-context-text">
           Đính kèm thông tin kỹ thuật
           <span class="hint" id="feedbackContextSummary"></span>
+        </span>
+        <span class="switch">
+          <input type="checkbox" id="feedbackIncludeContext" checked
+            role="switch" />
+          <span class="switch-track" aria-hidden="true"></span>
         </span>
       </label>
 

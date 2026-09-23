@@ -2445,6 +2445,11 @@ function buildFeedbackContext() {
     selectedMonth: getSelectedMonth(),
     entryCount: profile?.entries?.length ?? 0,
     viewport: `${window.innerWidth}x${window.innerHeight}`,
+    screen: `${window.screen?.width ?? 0}x${window.screen?.height ?? 0}`,
+    pixelRatio: String(window.devicePixelRatio ?? 1),
+    language: navigator.language ?? "",
+    platform: navigator.platform ?? "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "",
     userAgent: navigator.userAgent,
     submittedAt: new Date().toISOString(),
   };
@@ -2458,7 +2463,7 @@ function renderFeedbackContextSummary() {
   const context = buildFeedbackContext();
   const parts = [
     context.email || context.username || "tài khoản hiện tại",
-    `màn hình ${context.viewport}`,
+    `màn hình ${context.screen} · cửa sổ ${context.viewport}`,
     `tháng ${context.selectedMonth || "chưa chọn"}`,
   ];
   feedbackContextSummary.textContent = parts.join(" · ");
@@ -2503,6 +2508,7 @@ function saveFeedbackDraft() {
       JSON.stringify({
         message: feedbackMessage.value,
         category: feedbackForm.elements.namedItem("category").value,
+        includeContext: feedbackIncludeContext?.checked ?? true,
       }),
     );
   } catch {
@@ -2530,6 +2536,10 @@ function restoreFeedbackDraft() {
   );
   if (categoryInput) {
     categoryInput.checked = true;
+  }
+
+  if (feedbackIncludeContext && typeof draft.includeContext === "boolean") {
+    feedbackIncludeContext.checked = draft.includeContext;
   }
 }
 
@@ -2656,7 +2666,10 @@ function setupFeedbackWidget() {
   });
 
   feedbackForm.addEventListener("change", (event) => {
-    if (event.target?.name === "category") {
+    if (
+      event.target?.name === "category" ||
+      event.target === feedbackIncludeContext
+    ) {
       saveFeedbackDraft();
     }
   });
@@ -2707,12 +2720,15 @@ const FEEDBACK_CONTEXT_LABELS = {
   role: "Role",
   page: "Trang",
   userAgent: "User agent",
-  appVersion: "Phiên bản",
   language: "Ngôn ngữ",
   platform: "Nền tảng",
-  screen: "Màn hình",
+  viewport: "Kích thước cửa sổ",
+  screen: "Độ phân giải màn hình",
+  pixelRatio: "Tỉ lệ điểm ảnh",
   timezone: "Múi giờ",
   selectedMonth: "Tháng đang chọn",
+  entryCount: "Số bản ghi",
+  submittedAt: "Thời điểm gửi",
 };
 
 function formatFeedbackTimestamp(value) {
@@ -2735,12 +2751,14 @@ function renderFeedbackContextDetails(context) {
 
   const rows = Object.entries(context)
     .filter(([, value]) => value !== null && value !== undefined && value !== "")
-    .map(
-      ([key, value]) =>
-        `<div class="feedback-inbox-context-row"><span>${escapeHtml(
-          FEEDBACK_CONTEXT_LABELS[key] ?? key,
-        )}</span><strong>${escapeHtml(value)}</strong></div>`,
-    );
+    .map(([key, value]) => {
+      const display =
+        key === "submittedAt" ? formatFeedbackTimestamp(value) || value : value;
+
+      return `<div class="feedback-inbox-context-row"><span>${escapeHtml(
+        FEEDBACK_CONTEXT_LABELS[key] ?? key,
+      )}</span><strong>${escapeHtml(display)}</strong></div>`;
+    });
 
   if (rows.length === 0) {
     return "";
